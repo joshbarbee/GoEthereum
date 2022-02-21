@@ -2,53 +2,77 @@ package sqllogger
 
 import (
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"log"
+	"math/big"
 
-	"github.com/holiman/uint256"
+	"database/sql"
+
+	"github.com/ethereum/go-ethereum/common"
+	_ "github.com/go-sql-driver/mysql"
 )
 
-type sqllog struct {
-	Block    string
-	Tx       string
-	From     string
-	To       string
-	Value    uint64
-	GasLimit uint64
-	Logs     []trace
-}
-
-type trace struct {
-	Pc           uint64
-	Depth        uint64
-	Opcode       string
-	GasUsed      uint64
-	GasRemaining uint64
-	Stack        []uint256.Int
-	Memory       []byte
-	Storage      string
-	ReturnData   []byte
+type Trace struct {
+	Pc     uint64
+	Depth  uint64
+	Opcode string
+	Gas    uint64
+	Extra  string
 }
 
 var (
-	globLogger = &sqllog{}
+	logger sql.DB
+	trace  []Trace
 )
 
-func InitRecord(block string, tx string, from string, to string, value uint64, gl uint64) {
-	globLogger.Block = block
-	globLogger.Tx = tx
-	globLogger.From = from
-	globLogger.To = to
-	globLogger.Value = value
-	globLogger.GasLimit = gl
+func InitLogger() {
+	db, err := sql.Open("mysql", "josh:password@tcp(127.0.0.1:3306)/blockchain")
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	logger = *db
+
+	// initialize log for current tx
+	trace = []Trace{}
+
 }
 
-func AddEntry(pc uint64, depth uint64, op string, gU uint64, gR uint64, st []uint256.Int, mem []byte, stg string, retData []byte) {
-	globLogger.Logs = append(globLogger.Logs, trace{Pc: pc, Depth: depth, Opcode: op, GasUsed: gU, GasRemaining: gR, Stack: st, Memory: mem, Storage: stg, ReturnData: retData})
+func AddEntryLogs(txhash common.Hash, pc uint64, depth uint64, op string, gas uint64, extra string) {
+	// add opcode logs for current tx
+	trace = append(trace, Trace{
+		Pc:     pc,
+		Depth:  depth,
+		Opcode: op,
+		Gas:    gas,
+		Extra:  extra,
+	})
 }
 
-func WriteEntry() {
-	file, _ := json.MarshalIndent(globLogger, "", " ")
-	path := fmt.Sprintf("../logs/output-%s.json", globLogger.Tx)
-	_ = ioutil.WriteFile(path, file, 0644)
+func WriteEntry(block big.Int, tx string, from string, to string, value uint64, gp uint64, gu uint64, extra string) {
+	// adds extra detail to logs such as blockid, tx,...
+
+	stmt, err := logger.Prepare("INSERT INTO traces(blockID, tx, txTo, txFrom, gasPrice, gasUsed, logs, extra) VALUES(?,?,?,?,?,?,?,?)")
+
+	if err != nil {
+		log.Println(err, ". Unable to log transaction tx: ", tx)
+		trace = []Trace{}
+		return
+	}
+
+	logs, _ := json.MarshalIndent(trace, "", "  ")
+	sLogs := string(logs)
+
+	defer stmt.Close()
+
+	_, err = stmt.Exec(block.Uint64(), tx, from, to, gp, gu, sLogs, extra)
+
+	if err != nil {
+		log.Println(err, ". Unable to log transaction tx: ", tx)
+		trace = []Trace{}
+		return
+	}
+
+	// reset current log
+	trace = []Trace{}
 }

@@ -84,6 +84,7 @@ type TxContext struct {
 	// Message information
 	Origin   common.Address // Provides information for ORIGIN
 	GasPrice *big.Int       // Provides information for GASPRICE
+	Hash     common.Hash    // Porovides info for tx hash
 }
 
 // EVM is the Ethereum Virtual Machine base object and provides
@@ -121,6 +122,9 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+
+	// var to log whether prefetch is executing or tx actually being applied
+	prefetch bool
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -133,6 +137,7 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 		Config:      config,
 		chainConfig: chainConfig,
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil),
+		prefetch:    config.Prefetch,
 	}
 	evm.interpreter = NewEVMInterpreter(evm, config)
 	return evm

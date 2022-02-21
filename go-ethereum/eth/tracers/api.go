@@ -43,7 +43,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/sqllogger"
 )
 
 const (
@@ -806,9 +805,8 @@ func (api *API) TraceTransaction(ctx context.Context, hash common.Hash, config *
 		TxHash:    hash,
 	}
 
-	fmt.Println("IN TRACETX - API.GO")
 	i, error := api.traceTx(ctx, msg, txctx, vmctx, statedb, config)
-	sqllogger.WriteEntry()
+
 	return i, error
 }
 
@@ -876,8 +874,6 @@ func (api *API) traceTx(ctx context.Context, message core.Message, txctx *Contex
 		err       error
 		txContext = core.NewEVMTxContext(message)
 	)
-
-	sqllogger.InitRecord(vmctx.BlockNumber.String(), txctx.TxHash.String(), message.From().String(), message.To().String(), message.Value().Uint64(), 30000)
 
 	switch {
 	case config == nil:

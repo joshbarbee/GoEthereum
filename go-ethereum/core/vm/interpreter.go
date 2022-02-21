@@ -17,7 +17,6 @@
 package vm
 
 import (
-	"fmt"
 	"hash"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -36,6 +35,7 @@ type Config struct {
 	JumpTable *JumpTable // EVM instruction table, automatically populated if unset
 
 	ExtraEips []int // Additional EIPS that are to be enabled
+	Prefetch  bool
 }
 
 // ScopeContext contains the things that are per-call, such as stack and memory,
@@ -243,19 +243,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 
 		// execute the operation
-		res, err, _ = operation.execute(&pc, in, callContext)
+		var output string
+
+		res, err, output = operation.execute(&pc, in, callContext)
 
 		if err != nil {
 			break
 		}
 
-		stackBytes := stack.data
-		memBytes := mem.store
+		if !in.evm.prefetch {
+			sqllogger.AddEntryLogs(in.evm.TxContext.Hash, pc, uint64(in.evm.depth), op.String(), cost, output)
+		}
 
-		sqllogger.AddEntry(pc, uint64(in.evm.depth), op.String(), cost, gasRemaining, stackBytes, memBytes, "storage", in.returnData)
-
-		fmt.Println(in.evm.TxContext.GasPrice)
-		//fmt.Println(output, " PC: ", pc, " Gas: ", cost, " GasRemaining: ", gasRemaining, " RetData: ", in.returnData)
 		pc++
 
 	}

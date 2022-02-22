@@ -768,6 +768,8 @@ func (bc *BlockChain) Stop() {
 		return
 	}
 
+	sqllogger.CloseMongo()
+
 	// Unsubscribe all subscriptions registered from blockchain.
 	bc.scope.Close()
 

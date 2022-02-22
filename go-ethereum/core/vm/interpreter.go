@@ -159,7 +159,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		logged  bool   // deferred EVMLogger should ignore already logged steps
 		res     []byte // result of the opcode execution function
 		//output       string
-		gasRemaining uint64
 	)
 	// Don't move this deferrred function, it's placed before the capturestate-deferred method,
 	// so that it get's executed _after_: the capturestate needs the stacks before
@@ -235,8 +234,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}
 
-		gasRemaining = gasCopy - cost
-
 		if in.cfg.Debug {
 			in.cfg.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
 			logged = true
@@ -245,13 +242,14 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		var output string
 
-		res, err, output = operation.execute(&pc, in, callContext)
+		res, output, err = operation.execute(&pc, in, callContext)
 
 		if err != nil {
 			break
 		}
 
 		if !in.evm.prefetch {
+			// cost is dynamic so we log it just in case can be used as heuristic
 			sqllogger.AddEntryLogs(in.evm.TxContext.Hash, pc, uint64(in.evm.depth), op.String(), cost, output)
 		}
 

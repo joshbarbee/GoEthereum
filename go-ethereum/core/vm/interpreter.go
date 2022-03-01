@@ -22,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/sqllogger"
+	"github.com/ethereum/go-ethereum/mgologger"
 )
 
 // Config are the configuration options for the Interpreter
@@ -185,9 +185,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for {
+		gasCopy = contract.Gas
+
 		if in.cfg.Debug {
 			// Capture pre-execution values for tracing.
-			logged, pcCopy, gasCopy = false, pc, contract.Gas
+			logged, pcCopy = false, pc
 		}
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
@@ -239,18 +241,18 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			logged = true
 		}
 
-		// execute the operation
 		var output string
+		pccopy := pc
 
+		// execute the operation
 		res, output, err = operation.execute(&pc, in, callContext)
+
+		if !in.evm.prefetch {
+			mgologger.AddOpLog(pccopy, uint64(in.evm.depth), op.String(), gasCopy, cost, output)
+		}
 
 		if err != nil {
 			break
-		}
-
-		if !in.evm.prefetch {
-			// cost is dynamic so we log it just in case can be used as heuristic
-			sqllogger.AddEntryLogs(in.evm.TxContext.Hash, pc, uint64(in.evm.depth), op.String(), cost, output)
 		}
 
 		pc++

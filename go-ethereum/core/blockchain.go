@@ -41,8 +41,8 @@ import (
 	"github.com/ethereum/go-ethereum/internal/syncx"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/sqllogger"
 	"github.com/ethereum/go-ethereum/trie"
 	lru "github.com/hashicorp/golang-lru"
 )
@@ -216,7 +216,7 @@ type BlockChain struct {
 // available in the database. It initialises the default Ethereum Validator
 // and Processor.
 func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(header *types.Header) bool, txLookupLimit *uint64) (*BlockChain, error) {
-	sqllogger.InitLogger()
+	mgologger.InitLogger()
 
 	if cacheConfig == nil {
 		cacheConfig = defaultCacheConfig
@@ -768,7 +768,7 @@ func (bc *BlockChain) Stop() {
 		return
 	}
 
-	sqllogger.CloseMongo()
+	mgologger.CloseMongo()
 
 	// Unsubscribe all subscriptions registered from blockchain.
 	bc.scope.Close()

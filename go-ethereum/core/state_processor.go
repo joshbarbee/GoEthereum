@@ -27,8 +27,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/sqllogger"
 )
 
 // StateProcessor is a basic Processor, which takes care of transitioning
@@ -98,8 +98,9 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	// Create a new context to be used in the EVM environment.
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
-
 	evm.TxContext.Hash = tx.Hash()
+
+	mgologger.InitTrace(tx.Hash())
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := ApplyMessage(evm, msg, gp)
@@ -139,12 +140,12 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
 
-	to := msg.To()
-	if to == nil {
-		sqllogger.WriteEntry(*(receipt.BlockNumber), tx.Hash().String(), msg.From().String(), "0x0", msg.Value().Uint64(), msg.GasPrice().Uint64(), receipt.GasUsed, receipt.ContractAddress.String())
-	} else {
-		sqllogger.WriteEntry(*(receipt.BlockNumber), tx.Hash().String(), msg.From().String(), to.String(), msg.Value().Uint64(), msg.GasPrice().Uint64(), receipt.GasUsed, "")
+	to := "0x0"
+	if msg.To() != nil {
+		to = msg.To().String()
 	}
+
+	mgologger.WriteEntry(*(receipt.BlockNumber), tx.Hash(), msg.From().String(), to, *msg.Value(), *msg.GasPrice(), receipt.GasUsed, "")
 
 	return receipt, err
 }

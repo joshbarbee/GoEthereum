@@ -17,11 +17,13 @@
 package vm
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
@@ -508,7 +510,7 @@ func opMload(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 	v := scope.Stack.peek()
 	offset := int64(v.Uint64())
 	v.SetBytes(scope.Memory.GetPtr(offset, 32))
-	return nil, fmt.Sprintf("%d: %x", offset, *v), nil
+	return nil, fmt.Sprintf("%d: %s", offset, v.String()), nil
 }
 
 func opMstore(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, string, error) {
@@ -892,7 +894,11 @@ func makeLog(size int) executionFunc {
 			BlockNumber: interpreter.evm.Context.BlockNumber.Uint64(),
 		})
 
-		return nil, "", nil
+		if !interpreter.evm.prefetch {
+			mgologger.AddEventTrace(scope.Contract.Address().String(), fmt.Sprint(topics), hex.EncodeToString(d))
+		}
+
+		return nil, "", nil /*  */
 	}
 }
 
@@ -911,7 +917,7 @@ func opPush1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]by
 	}
 
 	scope.Stack.push(integer)
-	return nil, fmt.Sprintf("%x", integer), nil
+	return nil, fmt.Sprintf("0x%x", integer), nil
 }
 
 // make push instruction function

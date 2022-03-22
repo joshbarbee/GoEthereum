@@ -17,6 +17,7 @@
 package core
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/big"
 
@@ -100,7 +101,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	evm.Reset(txContext, statedb)
 	evm.TxContext.Hash = tx.Hash()
 
-	mgologger.InitTrace(tx.Hash())
+	mgologger.InitTrace()
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := ApplyMessage(evm, msg, gp)
@@ -145,7 +146,10 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 		to = msg.To().String()
 	}
 
-	mgologger.WriteEntry(*(receipt.BlockNumber), tx.Hash(), msg.From().String(), to, *msg.Value(), *msg.GasPrice(), receipt.GasUsed, "")
+	if !evm.Config.Prefetch {
+		mgologger.EndOpLog(hex.EncodeToString(result.ReturnData), tx.Hash())
+		mgologger.WriteEntry(*(receipt.BlockNumber), tx.Hash(), msg.From().String(), to, *msg.Value(), *msg.GasPrice(), result.UsedGas, "")
+	}
 
 	return receipt, err
 }
@@ -162,5 +166,6 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	// Create a new context to be used in the EVM environment
 	blockContext := NewEVMBlockContext(header, bc, author)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
+
 	return applyTransaction(msg, config, bc, author, gp, statedb, header.Number, header.Hash(), tx, usedGas, vmenv)
 }

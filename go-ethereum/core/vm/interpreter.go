@@ -158,6 +158,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		gasCopy uint64 // for EVMLogger to log gas remaining before execution
 		logged  bool   // deferred EVMLogger should ignore already logged steps
 		res     []byte // result of the opcode execution function
+		output  string
 		//output       string
 	)
 	// Don't move this deferrred function, it's placed before the capturestate-deferred method,
@@ -241,15 +242,19 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			logged = true
 		}
 
-		var output string
-		pccopy := pc
+		if !in.evm.prefetch {
+			// the hex of the opcodes associated with calls are between 0xf0 and 0xfa
+			iscall := false
+
+			if op >= 0xf0 && op <= 0xfa {
+				iscall = true
+			}
+
+			mgologger.AddOpLog(pc, uint64(in.evm.depth), op.String(), gasCopy, cost, output, iscall)
+		}
 
 		// execute the operation
 		res, output, err = operation.execute(&pc, in, callContext)
-
-		if !in.evm.prefetch {
-			mgologger.AddOpLog(pccopy, uint64(in.evm.depth), op.String(), gasCopy, cost, output)
-		}
 
 		if err != nil {
 			break

@@ -1,4 +1,3 @@
-pc,depth,opcode,gas,extra
 0,1,PUSH1,180523,3,0x60
 2,1,PUSH1,180520,3,0x40
 4,1,MSTORE,180517,12,0x40: [60 0 0 0]

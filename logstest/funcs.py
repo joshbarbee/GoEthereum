@@ -1,3 +1,6 @@
+from pydoc_data.topics import topics
+
+
 TRANSFERSIG = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 APPROVESIG = "0x6e11fb1b7f119e3f2fa29896ef5fdf8b8a2d0d4df6fe90ba8668e7d8b2ffa25e"
 APPROVEFORALLSIG = "0xaaf27816598688732a80b26fb3b6d0bc241c08f38a6d8ca2a0723f4835d593d6"
@@ -14,8 +17,8 @@ def compare_logs(log1, log2):
     return 0
 
 @staticmethod
-def isERC20(topics, data):
-    if len(data) != 3:
+def isERC20(topics):
+    if len(topics) != 3:
         return False
     
     if topics[0] != TRANSFERSIG and topics[0] != APPROVESIG:
@@ -24,11 +27,38 @@ def isERC20(topics, data):
     return True
 
 @staticmethod
-def isERC721(topics, data):
-    if len(data) != 4:
+def isERC721(topics):
+    if len(topics) != 4:
         return False
     
     if topics[0] != TRANSFERSIG and topics[0] != APPROVESIG and topics[0] != APPROVEFORALLSIG:
         return False
     
     return True
+
+@staticmethod 
+def getFunc(sig):
+    if sig == TRANSFERSIG:
+        return "TRANSFER"
+    
+    if sig == APPROVESIG:
+        return "APPROVE"
+    
+    if sig == APPROVEFORALLSIG:
+        return "APPROVEFORALL"
+    
+    return ""
+
+@staticmethod
+def isToken(topics, data) -> str :
+    t = ""
+
+    if (isERC721(topics)):
+        t += "ERC721: "
+    elif (isERC20(topics)):
+        t += "ERC20: "
+    else: return t
+
+    t += getFunc(topics[0])
+
+    return t

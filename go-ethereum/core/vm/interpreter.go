@@ -196,7 +196,8 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.cfg.JumpTable[op]
-		cost = operation.constantGas // For tracing
+		cost = operation.constantGas // For tracing\
+
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
@@ -237,11 +238,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}
 
-		if in.cfg.Debug {
-			in.cfg.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
-			logged = true
-		}
-
 		if !in.evm.prefetch {
 			// the hex of the opcodes associated with calls are between 0xf0 and 0xfa
 			iscall := false
@@ -251,6 +247,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 
 			mgologger.AddOpLog(pc, uint64(in.evm.depth), op.String(), gasCopy, cost, output, iscall)
+		}
+
+		if in.cfg.Debug {
+			in.cfg.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
+			logged = true
 		}
 
 		// execute the operation

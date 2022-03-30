@@ -1,7 +1,7 @@
-from asyncio.log import logger
 from dataclasses import dataclass
 from typing import List
 import logging
+
 
 '''
     BlockParser parses a given block number, fetching each logged tx from
@@ -70,10 +70,9 @@ class TxParser():
         for log in optrace.split("\n")[1:]:
             vals = log.split(",")
             if len(vals) < 6:
-                logger.critical("Unable to process instruction, invalid number of args in optrace: ", vals)
+                print("Unable to process instruction, invalid number of args in optrace: ", vals)
                 raise RuntimeError()
-            
-            op = Oplog(vals[0], vals[1], vals[2], vals[3], vals[4], vals[5])
+            op = Oplog(int(vals[0]), int(vals[1]), vals[2], vals[3], vals[4], vals[5])
             self.optrace.append(op)
         
     '''
@@ -84,11 +83,11 @@ class TxParser():
         for log in functrace.split("\n")[1:]:
             vals = log.split(",")
 
-            if len(vals) != 8:
-                logger.critical("Unable to process tx, invalid number of args in functrace", vals)
+            if len(vals) != 10:
+                print("Unable to process tx, invalid number of args in functrace", vals)
                 raise RuntimeError()
 
-            func = Funclog(vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7])
+            func = Funclog(int(vals[0]), vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], vals[7], vals[8])
             self.functrace.append(func)
 
     '''
@@ -100,7 +99,7 @@ class TxParser():
             vals = log.split(",")
 
             if len(vals) != 5:
-                logger.critical("Unable to process tx, invalid number of args in eventtrace", eventtrace)
+                print("Unable to process tx, invalid number of args in eventtrace", eventtrace)
                 raise RuntimeError()
 
             event = Eventlog(vals[0], vals[1], vals[2],vals[3],vals[4])
@@ -118,6 +117,7 @@ class Oplog:
 
 @dataclass
 class Funclog:
+    _index: int
     _ct: str
     _depth: int
     _to: str

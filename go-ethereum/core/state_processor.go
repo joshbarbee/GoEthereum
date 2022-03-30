@@ -102,6 +102,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 	evm.TxContext.Hash = tx.Hash()
 
 	mgologger.InitTrace()
+	mgologger.InitTrace()
 
 	// Apply the transaction to the current state (included in the env).
 	result, err := ApplyMessage(evm, msg, gp)

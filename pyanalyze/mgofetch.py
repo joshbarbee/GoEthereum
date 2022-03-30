@@ -11,7 +11,7 @@ class MongoFetcher():
     def __init__(self) -> None:
         self.client = MongoClient(MONGOURI)
         self.db = self.client.ethereum
-        self.collection = self.db.traces_test
+        self.collection = self.db.traces
         self.block : int = 1
 
     '''
@@ -29,5 +29,8 @@ class MongoFetcher():
 
         return txs
 
-    def get_tx(self, tx : str) -> Iterable[CursorType]:
+    def get_tx(self, tx : str = "") -> Iterable[CursorType]:
+        if tx == "":
+            return list(self.collection.aggregate([{"$sample": {"size": 1}}]))[0]
         return self.collection.find_one({"tx": tx})
+    

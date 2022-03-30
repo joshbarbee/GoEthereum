@@ -37,7 +37,7 @@ type (
 	// CanTransferFunc is the signature of a transfer guard function
 	CanTransferFunc func(StateDB, common.Address, *big.Int) bool
 	// TransferFunc is the signature of a transfer function
-	TransferFunc func(StateDB, common.Address, common.Address, *big.Int)
+	TransferFunc func(StateDB, common.Address, common.Address, *big.Int, bool, int)
 	// GetHashFunc returns the n'th block hash in the blockchain
 	// and is used by the BLOCKHASH EVM op code.
 	GetHashFunc func(uint64) common.Hash
@@ -173,7 +173,6 @@ func (evm *EVM) Interpreter() *EVMInterpreter {
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
-
 	// Fail if we're trying to execute above the call depth limit
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
@@ -186,7 +185,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	gasCopy := gas
 	inputCopy := make([]byte, len(input))
 	copy(inputCopy, input)
-	valueCopy := *value
+	valueCopy := value.String()
 
 	snapshot := evm.StateDB.Snapshot()
 	p, isPrecompile := evm.precompile(addr)
@@ -208,7 +207,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
+	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value, evm.prefetch, evm.depth)
 
 	// Capture the tracer start/end events in debug mode
 	if evm.Config.Debug {
@@ -232,7 +231,14 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		code := evm.StateDB.GetCode(addr)
+
+		traceIndexCopy := mgologger.TraceIndex
+		if !evm.prefetch {
+			mgologger.TraceIndex++
+		}
+
 		if len(code) == 0 {
+			// TODO: WE NEED TO LOG IN THIS CASE, which is INTERNAL TX -> EOA
 			ret, err = nil, nil // gas is unchanged
 		} else {
 			addrCopy := addr
@@ -243,7 +249,12 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
+		}
 
+		if !evm.prefetch {
+			to := addr.String()
+			from := caller.Address().String()
+			mgologger.AddFuncLog(traceIndexCopy, "CALL", evm.depth, from, to, valueCopy, gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
 		}
 	}
 
@@ -258,12 +269,6 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// TODO: consider clearing up unused snapshots:
 		//} else {
 		//	evm.StateDB.DiscardSnapshot(snapshot)
-	}
-
-	if !evm.prefetch {
-		to := addr.String()
-		from := caller.Address().String()
-		mgologger.AddFuncLog("CALL", evm.depth, from, to, *uint256.NewInt(valueCopy.Uint64()), gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
 	}
 
 	return ret, gas, err
@@ -285,6 +290,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	gasCopy := gas
 	inputCopy := make([]byte, len(input))
 	copy(inputCopy, input)
+	valueCopy := value.String()
 
 	// Fail if we're trying to transfer more than the available balance
 	// Note although it's noop to transfer X ether to caller itself. But
@@ -307,6 +313,12 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
+		traceIndexCopy := mgologger.TraceIndex
+
+		if !evm.prefetch {
+			mgologger.TraceIndex++
+		}
+
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -314,18 +326,18 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
 		ret, err = evm.interpreter.Run(contract, input, false)
 		gas = contract.Gas
+
+		if !evm.prefetch {
+			to := addr.String()
+			from := caller.Address().String()
+			mgologger.AddFuncLog(traceIndexCopy, "CALLCODE", evm.depth, from, to, valueCopy, gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
+		}
 	}
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
 			gas = 0
 		}
-	}
-
-	if !evm.prefetch {
-		to := addr.String()
-		from := caller.Address().String()
-		mgologger.AddFuncLog("CALLCODE", evm.depth, from, to, *uint256.NewInt(0), gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
 	}
 
 	return ret, gas, err
@@ -359,24 +371,31 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
+		traceIndexCopy := mgologger.TraceIndex
+
+		if !evm.prefetch {
+			mgologger.TraceIndex++
+		}
+
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
 		contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
 		contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
 		ret, err = evm.interpreter.Run(contract, input, false)
 		gas = contract.Gas
+
+		if !evm.prefetch {
+			to := addr.String()
+			from := caller.Address().String()
+			mgologger.AddFuncLog(traceIndexCopy, "DELEGATECALL", evm.depth, from, to, "0", gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
+		}
+
 	}
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
 			gas = 0
 		}
-	}
-
-	if !evm.prefetch {
-		to := addr.String()
-		from := caller.Address().String()
-		mgologger.AddFuncLog("DELEGATECALL", evm.depth, from, to, *uint256.NewInt(0), gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
 	}
 
 	return ret, gas, err
@@ -420,6 +439,11 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
+		traceIndexCopy := mgologger.TraceIndex
+		if !evm.prefetch {
+			mgologger.TraceIndex++
+		}
+
 		// At this point, we use a copy of address. If we don't, the go compiler will
 		// leak the 'contract' to the outer scope, and make allocation for 'contract'
 		// even if the actual execution ends on RunPrecompiled above.
@@ -433,18 +457,18 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		// when we're in Homestead this also counts for code storage gas errors.
 		ret, err = evm.interpreter.Run(contract, input, true)
 		gas = contract.Gas
+
+		if !evm.prefetch {
+			to := addr.String()
+			from := caller.Address().String()
+			mgologger.AddFuncLog(traceIndexCopy, "STATICCALL", evm.depth, from, to, "0", gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
+		}
 	}
 	if err != nil {
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
 			gas = 0
 		}
-	}
-
-	if !evm.prefetch {
-		to := addr.String()
-		from := caller.Address().String()
-		mgologger.AddFuncLog("STATICCALL", evm.depth, from, to, *uint256.NewInt(0), gasCopy, hex.EncodeToString(inputCopy), hex.EncodeToString(ret))
 	}
 
 	return ret, gas, err
@@ -491,6 +515,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	gasCopy := gas
 	codeCopy := make([]byte, len(codeAndHash.code))
 	copy(codeCopy, codeAndHash.code)
+	valueCopy := value.String()
 
 	// Create a new account on the state
 	snapshot := evm.StateDB.Snapshot()
@@ -498,7 +523,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if evm.chainRules.IsEIP158 {
 		evm.StateDB.SetNonce(address, 1)
 	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value)
+	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value, evm.prefetch, evm.depth)
 
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
@@ -515,6 +540,10 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 	start := time.Now()
 
+	traceIndexCopy := mgologger.TraceIndex
+	if !evm.prefetch {
+		mgologger.TraceIndex++
+	}
 	ret, err := evm.interpreter.Run(contract, nil, false)
 
 	// Check whether the max code size has been exceeded, assign err if the case.
@@ -561,7 +590,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if !evm.prefetch {
 		to := "0x0"
 		from := caller.Address().String()
-		mgologger.AddFuncLog(typ.String(), evm.depth, from, to, *uint256.NewInt(0), gasCopy, hex.EncodeToString(codeCopy), hex.EncodeToString(ret))
+		mgologger.AddFuncLog(traceIndexCopy, typ.String(), evm.depth, from, to, valueCopy, gasCopy, hex.EncodeToString(codeCopy), hex.EncodeToString(ret))
 	}
 
 	return ret, address, contract.Gas, err

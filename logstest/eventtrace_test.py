@@ -10,7 +10,7 @@ APIKEY = os.getenv("APIKEY", "No .env with api key found")
 def test_eventtraces(db, n : int):
     print("Testing event traces")
 
-    res = db.traces_test.aggregate([{"$sample": {"size": n}}])
+    res = db.traces.aggregate([{"$sample": {"size": n}}])
     for trace in res:
         # get transaction tx logs from etherscan api
         eth_res = requests.get(APIURL + APIKEY + "&module=proxy&action=eth_getTransactionReceipt&txhash=" + trace['tx']).json()

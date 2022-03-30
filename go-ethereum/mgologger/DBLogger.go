@@ -11,40 +11,49 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/globalsign/mgo"
-	"github.com/holiman/uint256"
 	"github.com/joho/godotenv"
 )
 
 type Collection struct {
-	Block      string
-	Tx         string
-	From       string
-	To         string
-	Value      string
-	GasPrice   string
-	GasUsed    string
-	Optrace    string
-	Functrace  string
-	Eventtrace string
+	Block        string
+	Tx           string
+	From         string
+	To           string
+	Value        string
+	GasPrice     string
+	GasUsed      string
+	Optrace      string
+	Functrace    string
+	Eventtrace   string
+	TransferLogs string
 }
 
 var (
-	logger            *mgo.Session
-	Db                *mgo.Database
-	BaseOptracestr    string
-	BaseFunctracestr  string
-	BaseEventtracestr string
-	BaseERC721str     string
-	BaseERC20str      string
-	Functrace         *bytes.Buffer
-	Optrace           *bytes.Buffer
-	Eventtrace        *bytes.Buffer
-	firstOpWrite      bool
-	depthBuffer       [1025]*bytes.Buffer
-	currentDepth      int
+	Logger *mgo.Session
+	Db     *mgo.Database
+
+	BaseOptracestr       string
+	BaseFunctracestr     string
+	BaseEventtracestr    string
+	BaseTransfertracestr string
+	BaseERC721str        string
+	BaseERC20str         string
+
+	Functrace     *bytes.Buffer
+	DepthBuffer   [1025]*bytes.Buffer
+	Optrace       *bytes.Buffer
+	Eventtrace    *bytes.Buffer
+	Transfertrace *bytes.Buffer
+
+	FirstOpWrite bool
+	CurrentDepth int
+
 	TransferSig       common.Hash
 	ApprovalSig       common.Hash
 	ApprovalForAllSig common.Hash
+
+	TraceAddr  [1025]uint
+	TraceIndex int
 )
 
 func InitLogger() {
@@ -59,18 +68,25 @@ func InitLogger() {
 
 	// initialize log for current tx
 	BaseOptracestr = "pc,depth,opcode,gas,output\n"
-	BaseFunctracestr = "calltype,depth,from,to,val,gas,input,output\n"
+	BaseFunctracestr = "index,calltype,depth,from,to,val,gas,input,output,callstack\n"
 	BaseEventtracestr = "address,topics,data,type,function\n"
+	BaseTransfertracestr = "from,to,tokenAddr,value,calldepth,callnum,traceindex,type\n"
 
-	Optrace = bytes.NewBuffer(make([]byte, 16000000))
-	Functrace = bytes.NewBuffer(make([]byte, 8000000))
-	Eventtrace = bytes.NewBuffer(make([]byte, 8000000))
+	Optrace = bytes.NewBuffer(make([]byte, 12000000))
+	Functrace = bytes.NewBuffer(make([]byte, 2000000))
+	Eventtrace = bytes.NewBuffer(make([]byte, 2000000))
+	Transfertrace = bytes.NewBuffer(make([]byte, 200000))
 
 	for i := 0; i < 1025; i++ {
-		depthBuffer[i] = bytes.NewBuffer(make([]byte, 10000))
+		DepthBuffer[i] = bytes.NewBuffer(make([]byte, 10000))
 	}
 
-	currentDepth = 0
+	for i := 0; i < 1025; i++ {
+		TraceAddr[i] = 0
+	}
+
+	CurrentDepth = 0
+	TraceIndex = 0
 
 	// initialize event function signatures for token tracing
 	TransferSig = crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
@@ -83,7 +99,7 @@ func InitLogger() {
 		log.Fatal(err)
 	}
 
-	logger = session
+	Logger = session
 
 	Db = session.DB("ethereum")
 }
@@ -92,28 +108,35 @@ func InitTrace() {
 	Optrace.Reset()
 	Functrace.Reset()
 	Eventtrace.Reset()
+	Transfertrace.Reset()
 
 	Optrace.WriteString(BaseOptracestr)
 	Functrace.WriteString(BaseFunctracestr)
 	Eventtrace.WriteString(BaseEventtracestr)
+	Transfertrace.WriteString(BaseTransfertracestr)
 
 	for i := 0; i < 1025; i++ {
-		depthBuffer[i].Reset()
+		DepthBuffer[i].Reset()
 	}
 
-	currentDepth = 0
+	for i := 0; i < 1025; i++ {
+		TraceAddr[i] = 0
+	}
 
-	firstOpWrite = true
+	CurrentDepth = 0
+	TraceIndex = 0
+
+	FirstOpWrite = true
 }
 
 func AddOpLog(pc uint64, depth uint64, op string, gas uint64, gasCost uint64, extra string, isCall bool) {
-	if firstOpWrite {
+	if FirstOpWrite {
 		Optrace.WriteString(fmt.Sprintf("%d,%d,%s,%d,%d,", pc, depth, op, gas, gasCost))
 	} else {
 		Optrace.WriteString(fmt.Sprintf("%s\n%d,%d,%s,%d,%d,", extra, pc, depth, op, gas, gasCost))
 	}
 
-	firstOpWrite = false
+	FirstOpWrite = false
 }
 
 func EndOpLog(ret string, tx common.Hash) {
@@ -125,60 +148,72 @@ func EndOpLog(ret string, tx common.Hash) {
 	}
 }
 
-func AddFuncLog(ct string, d int, from string, to string, value uint256.Int, g uint64, input string, output string) {
-	val := value.String()
+func AddFuncLog(index int, ct string, d int, from string, to string, value string, g uint64, input string, output string) {
+	if d == 0 {
+		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,[]\n", index, ct, d, from, to, value, g, input, output))
+	} else {
+		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,%+v\n", index, ct, d, from, to, value, g, input, output, TraceAddr[1:d+1]))
+	}
 
-	depthBuffer[d].WriteString(fmt.Sprintf("%s,%d,%s,%s,%s,%d,0x%s,0x%s\n", ct, d, from, to, val, g, input, output))
+	TraceAddr[d]++
 
-	for d < currentDepth {
-		depthBuffer[currentDepth-1].WriteString(depthBuffer[currentDepth].String())
-		depthBuffer[currentDepth].Reset()
+	for d < CurrentDepth {
+		DepthBuffer[CurrentDepth-1].WriteString(DepthBuffer[CurrentDepth].String())
+		DepthBuffer[CurrentDepth].Reset()
 
-		currentDepth--
+		CurrentDepth--
 	}
 
 	if d == 0 {
-		for currentDepth > d {
-			depthBuffer[currentDepth-1].WriteString(depthBuffer[currentDepth].String())
-			depthBuffer[currentDepth].Reset()
+		for CurrentDepth > d {
+			DepthBuffer[CurrentDepth-1].WriteString(DepthBuffer[CurrentDepth].String())
+			DepthBuffer[CurrentDepth].Reset()
 
-			currentDepth--
+			CurrentDepth--
 		}
 
-		Functrace.WriteString(depthBuffer[0].String())
-		depthBuffer[0].Reset()
+		Functrace.WriteString(DepthBuffer[0].String())
+		DepthBuffer[0].Reset()
 	}
 
-	currentDepth = d
+	CurrentDepth = d
 }
 
-func AddEventLog(addr common.Address, topics []common.Hash, data []byte) {
-	res, function := isERC20(topics, data)
+func AddEventLog(addr common.Address, topics []common.Hash, data []byte, logType string, function string) {
+	Eventtrace.WriteString(fmt.Sprintf("%s,%s,0x%s,%s,%s\n", addr, topics, hex.EncodeToString(data), logType, function))
+}
 
-	if res {
-		Eventtrace.WriteString(fmt.Sprintf("%s,%s,0x%s,ERC20,%s\n", addr, topics, hex.EncodeToString(data), function))
-		return
+// This is invoked in 1 of 3 contexts, 2 of which occure in AddEventLog:
+// 1. An ERC20 event
+// 2. An ERC721 event
+// 3. Any ethereum transfer event. Hooks .transfer()
+func AddTransferLog(from string, to string, tokenAddr string, value string, depth int, Type string) {
+	var output string
+
+	if depth == 0 {
+		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%d,[],%s\n", from, to, tokenAddr, value, depth, TraceIndex, Type)
+	} else {
+		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%d,%+v,%s\n", from, to, tokenAddr, value, depth, TraceIndex, TraceAddr[1:depth+1], Type)
 	}
 
-	res, function = isERC721(topics, data)
-	if res {
-		Eventtrace.WriteString(fmt.Sprintf("%s,%s,0x%s,ERC721,%s\n", addr, topics, hex.EncodeToString(data), function))
-		return
-	}
-
-	Eventtrace.WriteString(fmt.Sprintf("%s,%s,0x%s,,\n", addr, topics, hex.EncodeToString(data)))
+	Transfertrace.WriteString(output)
 }
 
 // we check if erc20 based on following info:
 // 1. if event signature is Transfer(from,to,value) or Approval(owner,spender,value)
 // 2. length of topics is 3
-func isERC20(topics []common.Hash, data []byte) (ret bool, function string) {
+func IsERC20(tokenAddr common.Address, topics []common.Hash, data []byte, depth int) (ret bool, function string) {
 	if len(topics) != 3 {
 		return false, ""
 	}
 
 	switch topics[0] {
 	case TransferSig:
+		from := topics[1].String()
+		to := topics[2].String()
+		tokenAddr := tokenAddr.String()
+		value := hex.EncodeToString(data)
+		AddTransferLog(from, to, tokenAddr, value, depth, "ERC20")
 		return true, "Transfer"
 	case ApprovalSig:
 		return true, "Approval"
@@ -190,13 +225,18 @@ func isERC20(topics []common.Hash, data []byte) (ret bool, function string) {
 // we check if erc721 based on following info
 // 1. if event sig is Transfer(from,to,value) or Approval(owner,spender,value) or ApporvalForAll(address,address,bool)
 // 2. length of topics is 4
-func isERC721(topics []common.Hash, data []byte) (ret bool, function string) {
+func IsERC721(tokenAddr common.Address, topics []common.Hash, data []byte, depth int) (ret bool, function string) {
 	if len(topics) != 4 {
 		return false, ""
 	}
 
 	switch topics[0] {
 	case TransferSig:
+		from := topics[1].String()
+		to := topics[2].String()
+		tokenAddr := tokenAddr.String()
+		value := hex.EncodeToString(data)
+		AddTransferLog(from, to, tokenAddr, value, depth, "ERC721")
 		return true, "Transfer"
 	case ApprovalSig:
 		return true, "Approval"
@@ -210,18 +250,20 @@ func isERC721(topics []common.Hash, data []byte) (ret bool, function string) {
 func WriteEntry(block big.Int, tx common.Hash, from string, to string, value big.Int, gasPrice big.Int, gasUsed uint64, extra string) {
 	if Optrace.String() != fmt.Sprint(BaseOptracestr+tx.String()) {
 		trace := Collection{
-			Block:      block.String(),
-			Tx:         tx.String(),
-			From:       from,
-			To:         to,
-			Value:      value.String(),
-			GasPrice:   gasPrice.String(),
-			GasUsed:    fmt.Sprintf("%d", gasUsed),
-			Functrace:  Functrace.String()[:len(Functrace.String())-1],
-			Eventtrace: Eventtrace.String()[:len(Eventtrace.String())-1], // remove newline
-			Optrace:    Optrace.String()[:len(Optrace.String())-len(tx.String())] + extra,
+			Block:        block.String(),
+			Tx:           tx.String(),
+			From:         from,
+			To:           to,
+			Value:        value.String(),
+			GasPrice:     gasPrice.String(),
+			GasUsed:      fmt.Sprintf("%d", gasUsed),
+			Functrace:    Functrace.String()[:len(Functrace.String())-1],
+			Eventtrace:   Eventtrace.String()[:len(Eventtrace.String())-1], // remove newline
+			Optrace:      Optrace.String()[:len(Optrace.String())-len(tx.String())] + extra,
+			TransferLogs: Transfertrace.String()[:len(Transfertrace.String())-1],
 		}
-		err := Db.C("traces_test").Insert(trace)
+
+		err := Db.C("traces").Insert(trace)
 
 		trace = Collection{}
 
@@ -235,5 +277,5 @@ func WriteEntry(block big.Int, tx common.Hash, from string, to string, value big
 }
 
 func CloseMongo() {
-	defer logger.Close()
+	defer Logger.Close()
 }

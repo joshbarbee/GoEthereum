@@ -1,4 +1,5 @@
-from funcs import isERC20, isERC721
+from pydoc_data.topics import topics
+from funcs import isToken
 import json
 
 
@@ -51,14 +52,15 @@ def parse_geth_functrace(logs):
         
         if len(log) > 1:
             log_dict = {
-                "calltype": log[0].lower(),
-                "depth": log[1],
-                "from": log[2].lower(), 
-                "to": log[3].lower(),
-                "value": log[4],
-                "gas": hex(int(log[5])),
-                "input": "0x0000000000000000000000000000000000000000000000000000000000000000" if log[6] == "0x0000000000000000000000000000000000000000000000000000000000000000" else log[6].lower(),
-                "output": log[7].lower()
+                "index": log[0],
+                "calltype": log[1].lower(),
+                "depth": log[2],
+                "from": log[3].lower(), 
+                "to": log[4].lower(),
+                "value": hex(int(log[5])),
+                "gas": hex(int(log[6])),
+                "input": log[7].lower(),
+                "output": log[8].lower()
             }
 
             res.append(log_dict)
@@ -70,6 +72,7 @@ def parse_etherscan_functrace(logs):
 
     logs = json.loads(logs)
 
+    i = 0
     for log in logs:
         if log['type'] == 'create':
             op = log['result']['address']
@@ -89,6 +92,7 @@ def parse_etherscan_functrace(logs):
         ip = log['action']['input'] if 'input' in log['action'] else log['action']['init']
        
         log_dict = {
+            "index": str(i),
             "calltype": ct,
             "depth": str(len(log['traceAddress'])),
             "from": log['action']['from'].lower(),
@@ -101,6 +105,8 @@ def parse_etherscan_functrace(logs):
 
         res.append(log_dict)
 
+        i += 1
+
     return res
 
 def parse_geth_eventtrace(logs):
@@ -112,10 +118,13 @@ def parse_geth_eventtrace(logs):
         # topics are space deliminated
         topics = (entries[1].replace("[", "").replace("]","")).split(" ")
 
+        t = isToken(topics, entries[2])
+
         log_dict = {
             "address": entries[0].lower(),
             "topics": topics,
             "data": entries[2],
+            "type": t
         }
 
         res.append(log_dict)
@@ -126,10 +135,13 @@ def parse_etherscan_eventtrace(logs):
     res = []
 
     for i in logs:
+        t = isToken(i['topics'], i['data'])
+
         log_dict = {
             "address": i["address"].lower(),
             "topics": i["topics"],
             "data": i["data"] if i["data"] != "" else "0x",
+            "type": t
         }
 
         res.append(log_dict)

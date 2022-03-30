@@ -38,7 +38,7 @@ var loopInterruptTests = []string{
 func TestLoopInterrupt(t *testing.T) {
 	address := common.BytesToAddress([]byte("contract"))
 	vmctx := BlockContext{
-		Transfer: func(StateDB, common.Address, common.Address, *big.Int) {},
+		Transfer: func(StateDB, common.Address, common.Address, *big.Int, bool, int) {},
 	}
 
 	for i, tt := range loopInterruptTests {

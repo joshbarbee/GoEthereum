@@ -238,24 +238,19 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}
 
-		if !in.evm.prefetch {
-			// the hex of the opcodes associated with calls are between 0xf0 and 0xfa
-			iscall := false
-
-			if op >= 0xf0 && op <= 0xfa {
-				iscall = true
-			}
-
-			mgologger.AddOpLog(pc, uint64(in.evm.depth), op.String(), gasCopy, cost, output, iscall)
-		}
-
 		if in.cfg.Debug {
 			in.cfg.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
 			logged = true
 		}
 
+		pcCopy := pc
+
 		// execute the operation
 		res, output, err = operation.execute(&pc, in, callContext)
+
+		if !in.evm.prefetch {
+			mgologger.AddOpLog(pcCopy, uint64(in.evm.depth), op.String(), gasCopy, cost, output)
+		}
 
 		if err != nil {
 			break

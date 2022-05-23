@@ -19,6 +19,8 @@ def test_optraces(db, n_tests):
 
     # get n random documents
     res = db.traces.aggregate([{"$sample": {"size": n_tests}}])
+    res = db.traces.find({"tx":"0x0ec3f2488a93839524add10ea229e773f6bc891b4eb4794c3337d4495263790b"})
+
 
     for trace in res:
         test_ops(driver, trace)

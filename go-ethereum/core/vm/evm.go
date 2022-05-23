@@ -235,6 +235,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		traceIndexCopy := mgologger.TraceIndex
 		if !evm.prefetch {
 			mgologger.TraceIndex++
+			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
 		}
 
 		if len(code) == 0 {
@@ -317,6 +318,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 
 		if !evm.prefetch {
 			mgologger.TraceIndex++
+			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
 		}
 
 		addrCopy := addr
@@ -375,6 +377,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 
 		if !evm.prefetch {
 			mgologger.TraceIndex++
+			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
 		}
 
 		addrCopy := addr
@@ -442,6 +445,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		traceIndexCopy := mgologger.TraceIndex
 		if !evm.prefetch {
 			mgologger.TraceIndex++
+			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
 		}
 
 		// At this point, we use a copy of address. If we don't, the go compiler will
@@ -542,6 +546,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 	traceIndexCopy := mgologger.TraceIndex
 	if !evm.prefetch {
+		mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
 		mgologger.TraceIndex++
 	}
 	ret, err := evm.interpreter.Run(contract, nil, false)

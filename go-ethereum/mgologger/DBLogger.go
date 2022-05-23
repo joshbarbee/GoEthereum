@@ -52,7 +52,9 @@ var (
 	ApprovalSig       common.Hash
 	ApprovalForAllSig common.Hash
 
-	TraceAddr  [1025]uint
+	TraceAddr [1025]uint
+	CallStack [1025]uint
+
 	TraceIndex int
 )
 
@@ -68,7 +70,7 @@ func InitLogger() {
 
 	// initialize log for current tx
 	BaseOptracestr = "pc,depth,opcode,gas,output\n"
-	BaseFunctracestr = "index,calltype,depth,from,to,val,gas,input,output,callstack\n"
+	BaseFunctracestr = "index,calltype,depth,from,to,val,gas,input,output,callstack,traceaddr \n"
 	BaseEventtracestr = "address,topics,data,type,function\n"
 	BaseTransfertracestr = "from,to,tokenAddr,value,calldepth,callnum,traceindex,type\n"
 
@@ -78,10 +80,8 @@ func InitLogger() {
 	Transfertrace = bytes.NewBuffer(make([]byte, 200000))
 
 	for i := 0; i < 1025; i++ {
-		DepthBuffer[i] = bytes.NewBuffer(make([]byte, 10000))
-	}
-
-	for i := 0; i < 1025; i++ {
+		DepthBuffer[i] = bytes.NewBuffer(make([]byte, 20000))
+		CallStack[i] = 0
 		TraceAddr[i] = 0
 	}
 
@@ -117,9 +117,7 @@ func InitTrace() {
 
 	for i := 0; i < 1025; i++ {
 		DepthBuffer[i].Reset()
-	}
-
-	for i := 0; i < 1025; i++ {
+		CallStack[i] = 0
 		TraceAddr[i] = 0
 	}
 
@@ -129,30 +127,23 @@ func InitTrace() {
 	FirstOpWrite = true
 }
 
-func AddOpLog(pc uint64, depth uint64, op string, gas uint64, gasCost uint64, extra string, isCall bool) {
-	if FirstOpWrite {
-		Optrace.WriteString(fmt.Sprintf("%d,%d,%s,%d,%d,", pc, depth, op, gas, gasCost))
-	} else {
-		Optrace.WriteString(fmt.Sprintf("%s\n%d,%d,%s,%d,%d,", extra, pc, depth, op, gas, gasCost))
-	}
-
-	FirstOpWrite = false
+func AddOpLog(pc uint64, depth uint64, op string, gas uint64, gasCost uint64, extra string) {
+	Optrace.WriteString(fmt.Sprintf("%d,%d,%s,%d,%d,%s\n", pc, depth, op, gas, gasCost, extra))
 }
 
 func EndOpLog(ret string, tx common.Hash) {
 	txCopy := tx.String()
 
 	if txCopy != "0x0000000000000000000000000000000000000000000000000000000000000000" {
-		Optrace.WriteString(ret)
 		Optrace.WriteString(txCopy)
 	}
 }
 
 func AddFuncLog(index int, ct string, d int, from string, to string, value string, g uint64, input string, output string) {
 	if d == 0 {
-		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,[]\n", index, ct, d, from, to, value, g, input, output))
+		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,[],[]\n", index, ct, d, from, to, value, g, input, output))
 	} else {
-		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,%+v\n", index, ct, d, from, to, value, g, input, output, TraceAddr[1:d+1]))
+		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,%+v,%+v\n", index, ct, d, from, to, value, g, input, output, CallStack[1:d+1], TraceAddr[1:d+1]))
 	}
 
 	TraceAddr[d]++
@@ -193,7 +184,7 @@ func AddTransferLog(from string, to string, tokenAddr string, value string, dept
 	if depth == 0 {
 		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%d,[],%s\n", from, to, tokenAddr, value, depth, TraceIndex, Type)
 	} else {
-		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%d,%+v,%s\n", from, to, tokenAddr, value, depth, TraceIndex, TraceAddr[1:depth+1], Type)
+		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%+v,%+v,%s\n", from, to, tokenAddr, value, depth, TraceIndex, CallStack[1:depth+1], Type)
 	}
 
 	Transfertrace.WriteString(output)

@@ -16,7 +16,7 @@ def test_functraces(db, n_traces):
 
     # get n random documents
     res = db.traces.aggregate([{"$sample": {"size": n_traces}}])
-    res = db.traces.find({"tx":"0xc5b8151a3e5e8374f0c980764e0e3825cddf59492d6440ce3d6cf04061399464"})
+    res = db.traces.find({"tx":"0x0ec3f2488a93839524add10ea229e773f6bc891b4eb4794c3337d4495263790b"})
 
     for trace in res:
         driver.get(CALLTRACE(trace['tx']))

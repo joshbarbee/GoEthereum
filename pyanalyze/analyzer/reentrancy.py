@@ -1,4 +1,3 @@
-from more_itertools import first
 from memory import Memory
 from base_heuristic import BaseHeuristic
 import pandas as pd

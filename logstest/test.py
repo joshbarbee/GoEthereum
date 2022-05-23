@@ -9,5 +9,5 @@ db = client.ethereum
 
 if __name__ == "__main__":
     test_functraces(db,1)
-    #test_txinblock(db, 5)
+    test_optraces(db,1)
 

@@ -4,7 +4,7 @@ import sys
 from os.path import abspath, dirname, join
 import pandas as pd
 from memory import Memory
-import Reentrancy
+from Reentrancy import Reentrancy
 
 # Prepend .. to $PATH so the project modules can be imported below
 src_path = join(dirname(abspath(__file__)), "..")
@@ -44,7 +44,8 @@ try:
     m = Memory(args.path)
     m.load()
 
-    Reentrancy.main(m) 
+    re = Reentrancy(m)
+    re.first_step()
 
     logging.info("Analysis finished")
 # Catch a Control-C and exit with UNIX failure status 1

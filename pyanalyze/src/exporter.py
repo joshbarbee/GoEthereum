@@ -142,6 +142,43 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
         with open(path, 'w') as f:
             f.write(self.source.sc_addr.lower())
 
+    '''
+        Generates a simplified .facts file where all information is contained into only 
+        one file. The ordering of the data is as such:
+        location, pc, opcode, call_depth_, call_index, value, def, # use, use vars...
+        
+        The # of values should match the number of # of defined variables
+    '''
+    def __generate_simple(self):
+        path = os.path.join(self.__output_dir, "allOps.facts")
+
+        lines = []
+
+        for block in self.source.blocks:
+            for op in block.tac_ops:
+                line = (op.op_index, hex(op.pc), op.opcode.name, op.depth, op.call_index)
+
+                define = ()
+                if isinstance(op, tac_cfg.TACAssignOp):
+                    vals = ()
+                    if op.lhs.values.is_finite:
+                        for val in op.lhs.values:
+                            vals = vals + (val,)
+        
+                    define = vals + (op.lhs.name, ) 
+                else:
+                    define = ("","") # filler data for tsv
+                uses = ()
+                if op.opcode != opcodes.CONST:
+                    for i, arg in enumerate(op.args):
+                        uses = uses + (arg.value.name, )
+
+                line = line + define + (len(uses), ) + uses
+            
+                lines.append(line)
+
+        self.__generate("opAll.facts", lines)        
+
     def export(self, output_dir: str = "", out_opcodes=[]):
         """
         Args:
@@ -157,6 +194,7 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
         self.__generate_blocks_ops(out_opcodes)
         self.__generate_sc_addr()
         self.__generate_def_use_value()
+        self.__generate_simple()
 
 class CFGStringExporter(Exporter, patterns.DynamicVisitor):
     """

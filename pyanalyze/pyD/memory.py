@@ -1,258 +1,156 @@
-import gc
-import gc
-from typing import Dict, List, Union
+from typing import Dict, List
 import pandas as pd
 import numpy as np
-import base_heuristic
-
 from pyDatalog import pyDatalog
-from pyDatalog.pyParser import Query
 
-pyDatalog.create_terms('edge,can_reach,origin,W,X,Y,Z,subset_depth,subset_instr,op_edge,op')
+pyDatalog.create_terms('edge,can_reach,value,addr,W,X,Y,Z')
 
-'''
-    Responsible for dealing with tracing variables, creating graphs between definitions of variables and usages
-'''
-
-class Variable(pyDatalog.Mixin):
-    '''
-        op is not type annotated due to how Variables and Ops interact. Although op should
-        be an Op object.
-    '''
-    def __init__(self, loc : int, symbol : str, opcode : str, value : int) -> None:
-        self.symbol = symbol
-
-        super(Variable, self).__init__()
-
-        self.origin_op = opcode
-        self.origin_value = value
-        self.origin_loc = loc
-
-        self.direct_uses = []
-        self.def_vars = []
-
-    def __repr__(self) -> str:
-        return self.symbol
-
-    '''
-        __str__ is very finicky with pyDatalog. Be sure to avoid infinite recursion even
-        when it seems that no recursion should be possible. Recommend just leaving self.symbol
-        as __str__
-    '''
-    def __str__(self) -> str:
-        return self.symbol
-
-    def __lt__(self, __o) -> bool:
-        if type(__o) != Variable:
-            raise NotImplemented
-        
-        if self.origin_loc < __o.origin_loc:
-            return False
-        
-        return True
-
-    def __hash__(self) -> int:
-        return hash(self.symbol)
-
-    def add_use(self, var) -> None:
-        self.direct_uses.append(var)
-
-    def add_def(self, var : Union[List, 'Variable']) -> None:
-        if type(var) == List: 
-            self.direct_uses.extend(var)
-        elif type(var) == Variable:
-            self.direct_uses.append(var)
-        else:
-            raise NotImplemented
-
-class Op(pyDatalog.Mixin):
-    ''' init consists of all info from the def.facts file, not the use.facts file'''
-    def __init__(self, opcode : str, pc : int, loc : int, call_num : int, depth : int, value : int, use_variables: List[str] = [], def_variables: List[Variable] = [], memory = None) -> None:
-        self.loc = loc
-        self.op = opcode
-        self.pc = pc
-       
-
-        self.use_vars = use_variables
-        self.def_vars = def_variables
-
-        self.call_num = call_num
-        self.depth = depth
-        self.value = value
-
-        self.memory = memory
-        super(Op, self).__init__()
-
-        +op(self.loc, self.op)
-
-    def __eq__(self, __o: object) -> bool:
-        if isinstance(__o, Variable):
-            return self.loc == __o.loc and self.op == __o.op
-        return False
-
-    def __lt__(self, __o: object) -> bool:
-        if not isinstance(__o, Variable):
-            return NotImplemented
-        else:
-            return self.loc < __o.loc
-
-    def __str__(self) -> str:
-        return f"{self.loc}:{self.op}"
-
-    def __hash__(self) -> int:
-        return hash(self.loc)
-
-    def __bytes__(self)-> bytes:
-        return str.encode(self.symbol)
-
-    def __repr__(self) -> str:
-        return f"Op{{0x{hex(id(self))}}}: {self.loc}:{self.op}"
-
-'''
-    Reads in branches of memory from the .tsv input files and then converts into graph representation (self.variables)
-'''
 class Memory():
+    '''
+    Reads in .facts files and converts into intermediate representation, conducting data analysis
+    using Pandas and pyDatalog
+    '''
     def __init__(self, path) -> None:
-        self.facts = None
-
         self.path : str = path
 
-        self.variables : Dict = {}
-        self.ops : Dict = {} # dict consisting of mapping between opcode and all opcodes of that type
+        self.ops : Dict[str, pd.DataFrame] = {} # dict of mapping between opcode and pandas dataframe of opcode
+        self.ops_df : pd.DataFrame = None
         self.max_depth : int = 0
 
-    '''
-        Loads all operations and creates connections between variables. Must load ops first
-    '''
     def load(self) -> None:
+        '''
+        Loads all operations and creates connections between variables. Must load ops first
+        '''
         self.__load_facts()
 
-        # force early gc 
-        del self.facts
+        # format all of the ops from lists to dataframes
+        for k,v in self.ops.items():
+            self.ops[k] = pd.DataFrame(data=v, columns=self.ops_df.columns)
 
-        gc.collect()
-
-    '''
-        Loads in all related .facts info from the opAll.facts file. From this, we create
-        a graph depicting the relationships between variables and how those variables are used
-    '''
     def __load_facts(self) -> None:
-        self.facts = pd.read_csv(self.path + 'opAll.facts', sep="\t", header=None, names=["loc","pc","op","depth","call_index","value","def","#uses","var1","var2"])
+        '''
+        Loads in all related .facts info from the opAll.facts file. From this, we create
+        a graph depicting the relationships between variables and how those variables are used.
+        Opcode information is saved into the self.ops dict, and self.ops_df dataframe.
 
-        for _, row in self.facts.iterrows():
-            op : str = row['op']
-            pc : int = row['pc']
-            loc : int = row['loc']
-            depth : int= row['depth']
-            index : int = row['call_index']
-            value : int = int(row['value']) if not pd.isna(row['value']) else None
+        A graph edge is created in one of two cases:
+        1. If a new variable is defined from a previously defined variable, an edge is created
+        from the used variable to the defined variable
+        2. An edge will always be created between a use variable and any opcode that uses the variable
 
-            def_var = None
+        We are then able to find whether an instruction is connected to another instruction by checking
+        this graph relationship via pydatalog
+
+        At this state self.ops consists of a dict of lists, not a dict of dataframes, as it 
+        is in the next step of load()
+        '''
+        self.ops_df = pd.read_csv(self.path + 'opAll.facts', sep="\t", header=None, names=["loc","pc","op","depth","cn","value","def","#uses","var1","var2",'var3','var4','var5','var6','var7'])
+
+        all_ops = self.ops_df['op'].unique().tolist()
+        self.ops = dict.fromkeys(all_ops, None)
+
+        prev_cn = self.ops_df.iloc[0]['cn']
+        prev_depth = self.ops_df.iloc[0]['depth'] 
+
+        for index, op in self.ops_df.iterrows():
+            opcode = op['op']
+            depth = op['depth']
 
             if depth > self.max_depth:
                 self.max_depth = depth
 
-            if loc < 2408 and loc > 2396:
-                a=3
-                pass
-
-            if not pd.isna(row["def"]):
-                def_var = Variable(loc, row['def'], op, value)
-                self.variables[def_var.symbol] = def_var
+            if not pd.isna(op['var1']):
+                if not pd.isna(op['def']):
+                    +edge(op['var1'], op['def'])
                 
-            uses = []
+                +edge(op['var2'], (opcode, op['cn']))
 
-            if not pd.isna(row["var1"]):
-                use_var = row["var1"]
-                uses.append(use_var)
-
-                if def_var != None:
-                    +edge(use_var, def_var.symbol)
-
-                parent = self.variables[use_var]
-                +op_edge(parent.origin_loc, loc)
-
-            if not pd.isna(row["var2"]):
-                use_var = row["var2"]
-                uses.append(use_var)
-
-                if def_var != None:
-                    +edge(use_var, def_var.symbol)
-
-                parent = self.variables[use_var]
-                +op_edge(parent.origin_loc, loc)
-               
-            new_op = Op(op, pc, loc, index, depth, value, uses, [def_var])
+            if not pd.isna(op['var2']):
+                if not pd.isna(op['def']):
+                    +edge(op['var2'], op['def'])
             
-            if def_var != None:
-                +origin(new_op, def_var)
+                +edge(op['var2'], (opcode, op['cn']))
 
-            '''if op not in self.ops:
-                self.ops[loc] = [new_op]
+            if not pd.isna(op['def']):
+                +value(op['def'], op['value'])
+
+            if self.ops[opcode] == None:
+                self.ops[opcode] = [op]
             else:
-                self.ops[loc].append(new_op)'''
+                self.ops[opcode].append(op)
 
-            self.ops[loc] = new_op
+            # if this occured, we had a depth change, and we can get the address of
+            # the previous smart contract via var2
+            if prev_cn != op['cn']:
+                if opcode in ["CALL", "CALLCODE", "STATTICCALL","DELEGATECALL"]:
+                    prev_addr = opcode["var2"]
+                    +addr((prev_cn,prev_depth), prev_addr)
 
-    '''
-        Checks if there is a connection between Var1 and Var2 
-        where Var1 flows to Var2 eventually
-    '''
-    def is_connected(self, var1 : Variable, var2 : Variable) -> bool:
+            prev_cn = op['cn']
+            prev_depth = op['depth']
+
+    def contains_instr(self, var : str, instr : str, call_num):
+        '''
+            Deteremines whether a specified opcode is able to be reached via
+            a defined variable. Checks whether the call number of the variable 
+            matches 
+
+            Links are defined by def-use relationships. Any use will be linked
+            to the def opcode
+
+            TODO: figure out if i need to do checks for depth and callnum here?
+            or maybe just callnum. Currently just callnum checked
+        '''
         can_reach(X,Y) <= can_reach(X,Z) & edge(Z,Y) & (X!=Y)
         can_reach(X,Y) <= edge(X,Y)
 
-        res = can_reach(var1,Y)
+        res = can_reach(var, Y)
+        return True if ((instr, call_num),) in can_reach(var, Y) else False
+    
 
-        return True if (var2,) in res else False
+    def reduce_instr(self, df : pd.DataFrame, instr : str) -> pd.DataFrame:
+        '''
+            Reduces a dataframe based on whether a defined variable in the dataframe
+            contains a linked opcode (via def-use relationship). If the opcode does not
+            define any new variables, it will not be included in the result. 
 
-    '''
-        Reduces a query of opcodes to a subset that have a dependency that 
-        matches the `instr` opcode.
+            Returns the reduced dataframe
+        '''
 
-        Links are defined by def-use relationships. Any use will be linked
-        to the def opcode
-    '''
-    def contains_instr(self, query : Query, instr : str):
-        # from the variable, find all subchildren of the variable. Return
-        # true if any children that match instruction is found
+        def parse_row(var1 : str, var2: str, cn : int):
+            if not pd.isna(var1):
+                if self.contains_instr(var1, instr, cn):
+                    return True
+            elif not pd.isna(var2):
+                if self.contains_instr(var2, instr, cn):
+                    return True
+            return False
 
-        # if the linked opcode with the op loc has a JUMPI instruction, define relationship
-        op(Y,Z) <= (Z == "JUMPI")
+        df.loc[:,'contains_instr'] = df.apply(lambda row: parse_row(row['var1'], row['var2'], row['cn']), axis=1)
 
-        # standard children finding algo
-        can_reach(X,Y) <= can_reach(X,Z) & op_edge(Z,Y) & (X!=Y)
-        can_reach(X,Y) <= op_edge(X,Y)
+        res = df.loc[df['contains_instr'] == True].copy()
 
-        # first get all children of each query item, then check the children's opcode for match
-        subset_instr(query) <= (can_reach(X,Y) & op(Y,Z))
+        res.drop('contains_instr', axis=1, inplace=True)
 
-        print(subset_instr.data)
-                
-    '''
-        Finds all variables where the opcode of the defining variables
-        matches the provided instruction. Returns a list of all instructions
-    '''
-    def find_instr(self, instr : str) -> list:
-        ops = Op.op[Y] == instr
-
-        # this is used elsewhere in the program. It is a quick way to convert a 
-        # pyDatalog query into a list
-        res = [i[0] for i in ops]
         return res
 
-    '''
-        Finds all variables matching certain an instruction and three depth parameters, 
-        inclusively. Returns a list consisting of found variables
-         1. the instruction to match with 
-         2. (optional) the exact depth to find all instructions at
-         3. (optional) the minimum depth to find instructions at
-         4. (optional) the maximum depth where an instruction can be found
+    def find_instr(self, instr : str) -> pd.DataFrame:
+        '''
+            Finds all variables where the opcode of the defining variables
+            matches the provided instruction. Returns a list of all instructions
+        '''
+        return self.ops[instr]
 
-        TODO: Find out if it is faster to find all ops first and then check depth, or 
-        check all depths first and then find ops
-    '''
-    def find_instr_depth(self, instr, exact_depth : int = None, min_depth : int = None, max_depth : int = None) -> Query:
+
+    def find_instr_depth(self, instr, exact_depth : int = None, min_depth : int = None, max_depth : int = None) -> pd.DataFrame:
+        '''
+            Finds all variables matching certain an instruction and three depth parameters, 
+            inclusively. Returns a list consisting of found variables
+                1. the instruction to match with 
+                2. (optional) the exact depth to find all instructions at
+                3. (optional) the minimum depth to find instructions at
+                4. (optional) the maximum depth where an instruction can be found
+        '''
         if exact_depth == None and min_depth == None and max_depth == None:
             return self.find_instr(instr)
 
@@ -263,6 +161,70 @@ class Memory():
             max_depth = self.max_depth if max_depth == None else max_depth
             min_depth = 0 if min_depth == None else min_depth
 
-        subset_depth(X) <= (Op.depth[X] < max_depth + 1) <= (Op.depth[X] >= min_depth) <= (Op.op[X] == instr)
+        all_instrs = self.ops[instr]
 
-        return X
+        bounded_instrs = all_instrs[all_instrs['depth'].between(min_depth, max_depth, inclusive=True)]
+
+        return bounded_instrs.copy() # we create a copy so that any reductions can be safely made on the data
+
+    def reduce_value(self, df1 : pd.DataFrame, df2: pd.DataFrame, df1_comparator : str, df2_comparator : str) -> pd.DataFrame:
+        '''
+            Compares two dataframes to determine if there exists a link between the value column
+            of dataframes. Any row with a value from the first dataframe that does not have a 
+            corresponding value in the second dataframe will be omitted in the return result.
+
+            The df_1_comparator variable is a string used to determine what column to get the value 
+            for from the dataframe, and similar for df_2. They should be a Variable row in the dataframe,
+            so either a def_var or one of the use_vars...
+            
+            We only check one variable at a time rather than all possible variables because 
+            we know specifically what variable should be analyzed.
+
+            After the value is found, we use pandas logic to determine any shared values. In this,
+            we make the assumption that all values 
+        '''
+
+        def locate_variable(var) -> int:
+            if not pd.isna(var):
+                return value(var,Y).v()[0]
+            else:
+                raise ValueError
+
+        res : List = []
+
+        df1.loc[:,'use_val'] = df1.apply(lambda row: locate_variable(row[df1_comparator]), axis=1)
+        
+        df2.loc[:,'use_val'] = df2.apply(lambda row: locate_variable(row[df2_comparator]), axis=1)
+
+        res = df1[df1['use_val'].isin(df2['use_val'])].copy()
+
+        df1.drop('use_val', axis=1, inplace=True)
+        df2.drop('use_val', axis=1, inplace=True)
+
+        return res
+    
+    def reduce_addr(self, df1 : pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+        '''
+            Reduces the first dataframe by determining the smart contract executing the opcode.
+            If the smart contract matches any smart contract that is executed in the second dataframe,
+            then it is added to the result.
+
+            The addresses are resolved based on the call number of the row in the dataframe 
+        '''
+
+        def locate_addr(cn,d) -> int:
+            if not pd.isna(cn,d):
+                return addr((cn,d),Y).v()[0]
+            else:
+                raise ValueError
+
+        df1.loc[:,'addr'] = df1.apply(lambda row: locate_addr(row['cn'],row['depth']), axis=1)
+    
+        df2.loc[:,'addr'] = df2.apply(lambda row: locate_addr(row['cn'], row['depth']), axis=1)
+
+        res = df1[df1['addr'].isin(df2['addr'])].copy()
+
+        df1.drop('addr', axis=1, inplace=True)
+        df2.drop('addr', axis=1, inplace=True)
+
+        return res.copy()

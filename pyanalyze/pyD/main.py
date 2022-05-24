@@ -46,6 +46,8 @@ try:
 
     re = Reentrancy(m)
     re.first_step()
+    re.second_step()
+    re.third_step()
 
     logging.info("Analysis finished")
 # Catch a Control-C and exit with UNIX failure status 1

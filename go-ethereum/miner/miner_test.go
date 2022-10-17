@@ -32,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -188,7 +189,6 @@ func TestStartStopMiner(t *testing.T) {
 	waitForMiningState(t, miner, true)
 	miner.Stop()
 	waitForMiningState(t, miner, false)
-
 }
 
 func TestCloseMiner(t *testing.T) {
@@ -257,7 +257,7 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create consensus engine
 	engine := clique.New(chainConfig.Clique, chainDB)
 	// Create Ethereum backend
-	bc, err := core.NewBlockChain(chainDB, nil, chainConfig, engine, vm.Config{}, nil, nil)
+	bc, err := core.NewBlockChain(chainDB, nil, genesis, nil, engine, vm.Config{}, nil, nil, mgologger.MongoConfig{})
 	if err != nil {
 		t.Fatalf("can't create new chain %v", err)
 	}

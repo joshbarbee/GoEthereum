@@ -25,6 +25,7 @@ import (
 )
 
 var activators = map[int]func(*JumpTable){
+	3855: enable3855,
 	3529: enable3529,
 	3198: enable3198,
 	2929: enable2929,
@@ -78,10 +79,10 @@ func enable1884(jt *JumpTable) {
 	}
 }
 
-func opSelfBalance(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, string, error) {
+func opSelfBalance(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, []byte, error) {
 	balance, _ := uint256.FromBig(interpreter.evm.StateDB.GetBalance(scope.Contract.Address()))
 	scope.Stack.push(balance)
-	return nil, "", nil
+	return nil, balance.Bytes(), nil
 }
 
 // enable1344 applies EIP-1344 (ChainID Opcode)
@@ -97,10 +98,10 @@ func enable1344(jt *JumpTable) {
 }
 
 // opChainID implements CHAINID opcode
-func opChainID(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, string, error) {
+func opChainID(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, []byte, error) {
 	chainId, _ := uint256.FromBig(interpreter.evm.chainConfig.ChainID)
 	scope.Stack.push(chainId)
-	return nil, "", nil
+	return nil, chainId.Bytes(), nil
 }
 
 // enable2200 applies EIP-2200 (Rebalance net-metered SSTORE)
@@ -169,8 +170,25 @@ func enable3198(jt *JumpTable) {
 }
 
 // opBaseFee implements BASEFEE opcode
-func opBaseFee(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, string, error) {
+func opBaseFee(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, []byte, error) {
 	baseFee, _ := uint256.FromBig(interpreter.evm.Context.BaseFee)
 	scope.Stack.push(baseFee)
-	return nil, "", nil
+	return nil, baseFee.Bytes(), nil
+}
+
+// enable3855 applies EIP-3855 (PUSH0 opcode)
+func enable3855(jt *JumpTable) {
+	// New opcode
+	jt[PUSH0] = &operation{
+		execute:     opPush0,
+		constantGas: GasQuickStep,
+		minStack:    minStack(0, 1),
+		maxStack:    maxStack(0, 1),
+	}
+}
+
+// opPush0 implements the PUSH0 opcode
+func opPush0(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, []byte, error) {
+	scope.Stack.push(new(uint256.Int))
+	return nil, nil, nil
 }

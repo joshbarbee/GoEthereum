@@ -94,6 +94,13 @@ func (ec *Client) BlockNumber(ctx context.Context) (uint64, error) {
 	return uint64(result), err
 }
 
+// PeerCount returns the number of p2p peers as reported by the net_peerCount method.
+func (ec *Client) PeerCount(ctx context.Context) (uint64, error) {
+	var result hexutil.Uint64
+	err := ec.c.CallContext(ctx, &result, "net_peerCount")
+	return uint64(result), err
+}
+
 type rpcBlock struct {
 	Hash         common.Hash      `json:"hash"`
 	Transactions []rpcTransaction `json:"transactions"`
@@ -456,6 +463,17 @@ func (ec *Client) CallContract(ctx context.Context, msg ethereum.CallMsg, blockN
 	return hex, nil
 }
 
+// CallContractAtHash is almost the same as CallContract except that it selects
+// the block by block hash instead of block height.
+func (ec *Client) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
+	var hex hexutil.Bytes
+	err := ec.c.CallContext(ctx, &hex, "eth_call", toCallArg(msg), rpc.BlockNumberOrHashWithHash(blockHash, false))
+	if err != nil {
+		return nil, err
+	}
+	return hex, nil
+}
+
 // PendingCallContract executes a message call transaction using the EVM.
 // The state seen by the contract call is the pending state.
 func (ec *Client) PendingCallContract(ctx context.Context, msg ethereum.CallMsg) ([]byte, error) {
@@ -485,6 +503,38 @@ func (ec *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 	return (*big.Int)(&hex), nil
+}
+
+type feeHistoryResultMarshaling struct {
+	OldestBlock  *hexutil.Big     `json:"oldestBlock"`
+	Reward       [][]*hexutil.Big `json:"reward,omitempty"`
+	BaseFee      []*hexutil.Big   `json:"baseFeePerGas,omitempty"`
+	GasUsedRatio []float64        `json:"gasUsedRatio"`
+}
+
+// FeeHistory retrieves the fee market history.
+func (ec *Client) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+	var res feeHistoryResultMarshaling
+	if err := ec.c.CallContext(ctx, &res, "eth_feeHistory", hexutil.Uint(blockCount), toBlockNumArg(lastBlock), rewardPercentiles); err != nil {
+		return nil, err
+	}
+	reward := make([][]*big.Int, len(res.Reward))
+	for i, r := range res.Reward {
+		reward[i] = make([]*big.Int, len(r))
+		for j, r := range r {
+			reward[i][j] = (*big.Int)(r)
+		}
+	}
+	baseFee := make([]*big.Int, len(res.BaseFee))
+	for i, b := range res.BaseFee {
+		baseFee[i] = (*big.Int)(b)
+	}
+	return &ethereum.FeeHistory{
+		OldestBlock:  (*big.Int)(res.OldestBlock),
+		Reward:       reward,
+		BaseFee:      baseFee,
+		GasUsedRatio: res.GasUsedRatio,
+	}, nil
 }
 
 // EstimateGas tries to estimate the gas needed to execute a specific transaction based on
@@ -519,6 +569,14 @@ func toBlockNumArg(number *big.Int) string {
 	pending := big.NewInt(-1)
 	if number.Cmp(pending) == 0 {
 		return "pending"
+	}
+	finalized := big.NewInt(int64(rpc.FinalizedBlockNumber))
+	if number.Cmp(finalized) == 0 {
+		return "finalized"
+	}
+	safe := big.NewInt(int64(rpc.SafeBlockNumber))
+	if number.Cmp(safe) == 0 {
+		return "safe"
 	}
 	return hexutil.EncodeBig(number)
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The go-ethereum Authors
+// Copyright 2020 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -23,7 +23,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -39,8 +38,7 @@ import (
 
 // To regenerate discv5 test vectors, run
 //
-//     go test -run TestVectors -write-test-vectors
-//
+//	go test -run TestVectors -write-test-vectors
 var writeTestVectorsFlag = flag.Bool("write-test-vectors", false, "Overwrite discv5 test vectors in testdata/")
 
 var (
@@ -276,7 +274,15 @@ func TestDecodeErrorsV5(t *testing.T) {
 	net := newHandshakeTest()
 	defer net.close()
 
-	net.nodeA.expectDecodeErr(t, errTooShort, []byte{})
+	b := make([]byte, 0)
+	net.nodeA.expectDecodeErr(t, errTooShort, b)
+
+	b = make([]byte, 62)
+	net.nodeA.expectDecodeErr(t, errTooShort, b)
+
+	b = make([]byte, 63)
+	net.nodeA.expectDecodeErr(t, errInvalidHeader, b)
+
 	// TODO some more tests would be nice :)
 	// - check invalid authdata sizes
 	// - check invalid handshake data sizes
@@ -580,7 +586,7 @@ func (n *handshakeTestNode) id() enode.ID {
 // hexFile reads the given file and decodes the hex data contained in it.
 // Whitespace and any lines beginning with the # character are ignored.
 func hexFile(file string) []byte {
-	fileContent, err := ioutil.ReadFile(file)
+	fileContent, err := os.ReadFile(file)
 	if err != nil {
 		panic(err)
 	}

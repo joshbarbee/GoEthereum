@@ -17,10 +17,9 @@
 package vm
 
 import (
-	"hash"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/mgologger"
 )
@@ -46,27 +45,17 @@ type ScopeContext struct {
 	Contract *Contract
 }
 
-// keccakState wraps sha3.state. In addition to the usual hash methods, it also supports
-// Read to get a variable amount of data from the hash state. Read is faster than Sum
-// because it doesn't copy the internal state, but also modifies the internal state.
-type keccakState interface {
-	hash.Hash
-	Read([]byte) (int, error)
-}
-
 // EVMInterpreter represents an EVM interpreter
 type EVMInterpreter struct {
 	evm *EVM
 	cfg Config
 
-	hasher    keccakState // Keccak256 hasher instance shared across opcodes
-	hasherBuf common.Hash // Keccak256 hasher result array shared aross opcodes
+	hasher    crypto.KeccakState // Keccak256 hasher instance shared across opcodes
+	hasherBuf common.Hash        // Keccak256 hasher result array shared aross opcodes
 
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
-
-type Storage map[common.Hash]common.Hash
 
 // NewEVMInterpreter returns a new instance of the Interpreter.
 func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
@@ -94,15 +83,18 @@ func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 		default:
 			cfg.JumpTable = &frontierInstructionSet
 		}
-		for i, eip := range cfg.ExtraEips {
+		var extraEips []int
+		for _, eip := range cfg.ExtraEips {
 			copy := *cfg.JumpTable
 			if err := EnableEIP(eip, &copy); err != nil {
 				// Disable it, so caller can check if it's activated or not
-				cfg.ExtraEips = append(cfg.ExtraEips[:i], cfg.ExtraEips[i+1:]...)
 				log.Error("EIP activation failed", "eip", eip, "error", err)
+			} else {
+				extraEips = append(extraEips, eip)
 			}
 			cfg.JumpTable = &copy
 		}
+		cfg.ExtraEips = extraEips
 	}
 
 	return &EVMInterpreter{
@@ -118,7 +110,6 @@ func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 // considered a revert-and-consume-all-gas operation except for
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
-
 	// Increment the call depth which is restricted to 1024
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
@@ -158,10 +149,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		gasCopy uint64 // for EVMLogger to log gas remaining before execution
 		logged  bool   // deferred EVMLogger should ignore already logged steps
 		res     []byte // result of the opcode execution function
-		output  string
-		//output       string
+		output  []byte // the output for the mongodb logger
 	)
-	// Don't move this deferrred function, it's placed before the capturestate-deferred method,
+	// Don't move this deferred function, it's placed before the capturestate-deferred method,
 	// so that it get's executed _after_: the capturestate needs the stacks before
 	// they are returned to the pools
 	defer func() {
@@ -180,24 +170,20 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			}
 		}()
 	}
-
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for {
-		gasCopy = contract.Gas
-
 		if in.cfg.Debug {
 			// Capture pre-execution values for tracing.
-			logged, pcCopy = false, pc
+			logged, pcCopy, gasCopy = false, pc, contract.Gas
 		}
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.cfg.JumpTable[op]
-		cost = operation.constantGas // For tracing\
-
+		cost = operation.constantGas // For tracing
 		// Validate stack
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
@@ -233,31 +219,30 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			if err != nil || !contract.UseGas(dynamicCost) {
 				return nil, ErrOutOfGas
 			}
+			// Do tracing before memory expansion
+			if in.cfg.Debug {
+				in.cfg.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
+				logged = true
+			}
 			if memorySize > 0 {
 				mem.Resize(memorySize)
 			}
-		}
-
-		if in.cfg.Debug {
+		} else if in.cfg.Debug {
 			in.cfg.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
 			logged = true
 		}
 
-		pcCopy := pc
-
 		// execute the operation
 		res, output, err = operation.execute(&pc, in, callContext)
 
-		if !in.evm.prefetch {
+		if !in.evm.Prefetch {
 			mgologger.AddOpLog(pcCopy, uint64(in.evm.depth), op.String(), gasCopy, cost, output)
 		}
 
 		if err != nil {
 			break
 		}
-
 		pc++
-
 	}
 
 	if err == errStopToken {

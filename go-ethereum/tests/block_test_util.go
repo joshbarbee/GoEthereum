@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -66,7 +67,7 @@ type btBlock struct {
 	UncleHeaders    []*btHeader
 }
 
-//go:generate gencodec -type btHeader -field-override btHeaderMarshaling -out gen_btheader.go
+//go:generate go run github.com/fjl/gencodec -type btHeader -field-override btHeaderMarshaling -out gen_btheader.go
 
 type btHeader struct {
 	Bloom            types.Bloom
@@ -106,7 +107,8 @@ func (t *BlockTest) Run(snapshotter bool) error {
 
 	// import pre accounts & construct test genesis block & state root
 	db := rawdb.NewMemoryDatabase()
-	gblock, err := t.genesis(config).Commit(db)
+	gspec := t.genesis(config)
+	gblock, err := gspec.Commit(db)
 	if err != nil {
 		return err
 	}
@@ -127,7 +129,7 @@ func (t *BlockTest) Run(snapshotter bool) error {
 		cache.SnapshotLimit = 1
 		cache.SnapshotWait = true
 	}
-	chain, err := core.NewBlockChain(db, cache, config, engine, vm.Config{}, nil, nil)
+	chain, err := core.NewBlockChain(db, cache, gspec, nil, engine, vm.Config{}, nil, nil, mgologger.MongoConfig{})
 	if err != nil {
 		return err
 	}
@@ -174,17 +176,18 @@ func (t *BlockTest) genesis(config *params.ChainConfig) *core.Genesis {
 	}
 }
 
-/* See https://github.com/ethereum/tests/wiki/Blockchain-Tests-II
+/*
+See https://github.com/ethereum/tests/wiki/Blockchain-Tests-II
 
-   Whether a block is valid or not is a bit subtle, it's defined by presence of
-   blockHeader, transactions and uncleHeaders fields. If they are missing, the block is
-   invalid and we must verify that we do not accept it.
+	Whether a block is valid or not is a bit subtle, it's defined by presence of
+	blockHeader, transactions and uncleHeaders fields. If they are missing, the block is
+	invalid and we must verify that we do not accept it.
 
-   Since some tests mix valid and invalid blocks we need to check this for every block.
+	Since some tests mix valid and invalid blocks we need to check this for every block.
 
-   If a block is invalid it does not necessarily fail the test, if it's invalidness is
-   expected we are expected to ignore it and continue processing and then validate the
-   post state.
+	If a block is invalid it does not necessarily fail the test, if it's invalidness is
+	expected we are expected to ignore it and continue processing and then validate the
+	post state.
 */
 func (t *BlockTest) insertBlocks(blockchain *core.BlockChain) ([]btBlock, error) {
 	validBlocks := make([]btBlock, 0)

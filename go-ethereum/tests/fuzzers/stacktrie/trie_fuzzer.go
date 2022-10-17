@@ -25,7 +25,6 @@ import (
 	"io"
 	"sort"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/trie"
 	"golang.org/x/crypto/sha3"
@@ -66,6 +65,8 @@ func (s *spongeDb) Has(key []byte) (bool, error)             { panic("implement 
 func (s *spongeDb) Get(key []byte) ([]byte, error)           { return nil, errors.New("no such elem") }
 func (s *spongeDb) Delete(key []byte) error                  { panic("implement me") }
 func (s *spongeDb) NewBatch() ethdb.Batch                    { return &spongeBatch{s} }
+func (s *spongeDb) NewBatchWithSize(size int) ethdb.Batch    { return &spongeBatch{s} }
+func (s *spongeDb) NewSnapshot() (ethdb.Snapshot, error)     { panic("implement me") }
 func (s *spongeDb) Stat(property string) (string, error)     { panic("implement me") }
 func (s *spongeDb) Compact(start []byte, limit []byte) error { panic("implement me") }
 func (s *spongeDb) Close() error                             { return nil }
@@ -112,12 +113,15 @@ func (k kvs) Swap(i, j int) {
 	k[j], k[i] = k[i], k[j]
 }
 
+// Fuzz is the fuzzing entry-point.
 // The function must return
-// 1 if the fuzzer should increase priority of the
-//    given input during subsequent fuzzing (for example, the input is lexically
-//    correct and was parsed successfully);
-// -1 if the input must not be added to corpus even if gives new coverage; and
-// 0  otherwise
+//
+//   - 1 if the fuzzer should increase priority of the
+//     given input during subsequent fuzzing (for example, the input is lexically
+//     correct and was parsed successfully);
+//   - -1 if the input must not be added to corpus even if gives new coverage; and
+//   - 0 otherwise
+//
 // other values are reserved for future use.
 func Fuzz(data []byte) int {
 	f := fuzzer{
@@ -137,12 +141,11 @@ func Debug(data []byte) int {
 }
 
 func (f *fuzzer) fuzz() int {
-
 	// This spongeDb is used to check the sequence of disk-db-writes
 	var (
 		spongeA     = &spongeDb{sponge: sha3.NewLegacyKeccak256()}
 		dbA         = trie.NewDatabase(spongeA)
-		trieA, _    = trie.New(common.Hash{}, dbA)
+		trieA       = trie.NewEmpty(dbA)
 		spongeB     = &spongeDb{sponge: sha3.NewLegacyKeccak256()}
 		trieB       = trie.NewStackTrie(spongeB)
 		vals        kvs
@@ -173,9 +176,12 @@ func (f *fuzzer) fuzz() int {
 		return 0
 	}
 	// Flush trie -> database
-	rootA, _, err := trieA.Commit(nil)
+	rootA, nodes, err := trieA.Commit(false)
 	if err != nil {
 		panic(err)
+	}
+	if nodes != nil {
+		dbA.Update(trie.NewWithNodeSet(nodes))
 	}
 	// Flush memdb -> disk (sponge)
 	dbA.Commit(rootA, false, nil)
@@ -184,7 +190,7 @@ func (f *fuzzer) fuzz() int {
 	sort.Sort(vals)
 	for _, kv := range vals {
 		if f.debugging {
-			fmt.Printf("{\"0x%x\" , \"0x%x\"} // stacktrie.Update\n", kv.k, kv.v)
+			fmt.Printf("{\"%#x\" , \"%#x\"} // stacktrie.Update\n", kv.k, kv.v)
 		}
 		trieB.Update(kv.k, kv.v)
 	}

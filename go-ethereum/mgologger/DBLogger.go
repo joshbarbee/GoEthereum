@@ -6,94 +6,63 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"os"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/globalsign/mgo"
-	"github.com/joho/godotenv"
 )
 
+type MongoConfig struct {
+	MongoURI       string
+	DatabaseName   string
+	CollectionName string
+}
+
 type Collection struct {
-	Block        string
-	Tx           string
-	From         string
-	To           string
-	Value        string
-	GasPrice     string
-	GasUsed      string
-	Optrace      string
-	Functrace    string
-	Eventtrace   string
-	TransferLogs string
+	Block         int
+	Tx            string
+	From          string
+	To            string
+	Value         string
+	GasPrice      string
+	GasUsed       string
+	OpTrace       string
+	FuncTrace     string
+	EventTrace    string
+	TransferTrace string
 }
 
 var (
-	Logger *mgo.Session
-	Db     *mgo.Database
+	Logger     *mgo.Session
+	Db         *mgo.Database
+	collection string
 
-	BaseOptracestr       string
-	BaseFunctracestr     string
-	BaseEventtracestr    string
-	BaseTransfertracestr string
-	BaseERC721str        string
-	BaseERC20str         string
-
-	Functrace     *bytes.Buffer
-	DepthBuffer   [1025]*bytes.Buffer
-	Optrace       *bytes.Buffer
-	Eventtrace    *bytes.Buffer
-	Transfertrace *bytes.Buffer
-
-	FirstOpWrite bool
-	CurrentDepth int
-
-	TransferSig       common.Hash
-	ApprovalSig       common.Hash
-	ApprovalForAllSig common.Hash
-
-	TraceAddr [1025]uint
-	CallStack [1025]uint
+	opTrace       *bytes.Buffer
+	funcTrace     *bytes.Buffer
+	eventTrace    *bytes.Buffer
+	transferTrace *bytes.Buffer
 
 	TraceIndex int
+	CallStack  [1024]uint
+
+	OpTraceFormat       = "pc, depth, opcode,gas, cost, output"
+	FuncTraceFormat     = "index, calltype, depth, fromStr, toStr, valueStr, gas, inputStr, outputStr"
+	EventTraceFormat    = "address,topics,data"
+	TransferTraceFormat = "from, to, value, depth"
 )
 
-func InitLogger() {
-	err := godotenv.Load("../.env")
-	if err != nil {
-		log.Fatal("Failed to log godotenv")
-	}
+func InitLogger(cfg MongoConfig) {
+	opTrace = bytes.NewBuffer(make([]byte, 8_000_00))
+	funcTrace = bytes.NewBuffer(make([]byte, 2_000_000))
+	eventTrace = bytes.NewBuffer(make([]byte, 500_000))
+	transferTrace = bytes.NewBuffer(make([]byte, 500_000))
 
-	_ = os.Getenv("DBPASS")
-
-	url := "mongodb://127.0.0.1:27017"
-
-	// initialize log for current tx
-	BaseOptracestr = "pc,depth,opcode,gas,output\n"
-	BaseFunctracestr = "index,calltype,depth,from,to,val,gas,input,output,callstack,traceaddr \n"
-	BaseEventtracestr = "address,topics,data,type,function\n"
-	BaseTransfertracestr = "from,to,tokenAddr,value,calldepth,callnum,traceindex,type\n"
-
-	Optrace = bytes.NewBuffer(make([]byte, 12000000))
-	Functrace = bytes.NewBuffer(make([]byte, 2000000))
-	Eventtrace = bytes.NewBuffer(make([]byte, 2000000))
-	Transfertrace = bytes.NewBuffer(make([]byte, 200000))
-
-	for i := 0; i < 1025; i++ {
-		DepthBuffer[i] = bytes.NewBuffer(make([]byte, 20000))
+	for i := 0; i < 1024; i++ {
 		CallStack[i] = 0
-		TraceAddr[i] = 0
 	}
 
-	CurrentDepth = 0
 	TraceIndex = 0
-
-	// initialize event function signatures for token tracing
-	TransferSig = crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
-	ApprovalSig = crypto.Keccak256Hash([]byte("Approval(address,address,uint256)"))
-	ApprovalForAllSig = crypto.Keccak256Hash([]byte("Approval(address,address,bool)"))
-
-	session, err := mgo.Dial(url)
+	session, err := mgo.DialWithTimeout(cfg.MongoURI, 0)
 
 	if err != nil {
 		log.Fatal(err)
@@ -101,170 +70,89 @@ func InitLogger() {
 
 	Logger = session
 
-	Db = session.DB("ethereum")
+	Db = session.DB(cfg.DatabaseName)
+	collection = cfg.CollectionName
 }
 
 func InitTrace() {
-	Optrace.Reset()
-	Functrace.Reset()
-	Eventtrace.Reset()
-	Transfertrace.Reset()
+	opTrace.Reset()
+	funcTrace.Reset()
+	eventTrace.Reset()
+	transferTrace.Reset()
 
-	Optrace.WriteString(BaseOptracestr)
-	Functrace.WriteString(BaseFunctracestr)
-	Eventtrace.WriteString(BaseEventtracestr)
-	Transfertrace.WriteString(BaseTransfertracestr)
-
-	for i := 0; i < 1025; i++ {
-		DepthBuffer[i].Reset()
+	for i := 0; i < 1024; i++ {
 		CallStack[i] = 0
-		TraceAddr[i] = 0
 	}
 
-	CurrentDepth = 0
 	TraceIndex = 0
-
-	FirstOpWrite = true
 }
 
-func AddOpLog(pc uint64, depth uint64, op string, gas uint64, gasCost uint64, extra string) {
-	Optrace.WriteString(fmt.Sprintf("%d,%d,%s,%d,%d,%s\n", pc, depth, op, gas, gasCost, extra))
+func AddOpLog(pc uint64, depth uint64, op string, gas uint64, gasCost uint64, ret []byte) {
+	output := hex.EncodeToString(ret)
+	opTrace.WriteString(fmt.Sprintf("%d,%d,%s,%d,%d,0x%s\n", pc, depth, op, gas, gasCost, output))
 }
 
-func EndOpLog(ret string, tx common.Hash) {
-	txCopy := tx.String()
+func AddFuncLog(index int, calltype string, depth int, from common.Address, to common.Address, value big.Int, gas uint64, input []byte, output []byte) {
+	fromStr := from.String()
+	toStr := to.String()
+	valueStr := value.String()
+	inputStr := hex.EncodeToString(input)
+	outputStr := hex.EncodeToString(output)
 
-	if txCopy != "0x0000000000000000000000000000000000000000000000000000000000000000" {
-		Optrace.WriteString(txCopy)
-	}
-}
-
-func AddFuncLog(index int, ct string, d int, from string, to string, value string, g uint64, input string, output string) {
-	if d == 0 {
-		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,[],[]\n", index, ct, d, from, to, value, g, input, output))
+	if depth == 0 {
+		funcTrace.WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,[],[]\n", index, calltype, depth, fromStr, toStr, valueStr, gas, inputStr, outputStr))
 	} else {
-		DepthBuffer[d].WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,%+v,%+v\n", index, ct, d, from, to, value, g, input, output, CallStack[1:d+1], TraceAddr[1:d+1]))
+		funcTrace.WriteString(fmt.Sprintf("%d,%s,%d,%s,%s,%s,%d,0x%s,0x%s,%+v\n", index, calltype, depth, fromStr, toStr, valueStr, gas, inputStr, outputStr, CallStack[1:depth+1]))
 	}
-
-	TraceAddr[d]++
-
-	for d < CurrentDepth {
-		DepthBuffer[CurrentDepth-1].WriteString(DepthBuffer[CurrentDepth].String())
-		DepthBuffer[CurrentDepth].Reset()
-
-		CurrentDepth--
-	}
-
-	if d == 0 {
-		for CurrentDepth > d {
-			DepthBuffer[CurrentDepth-1].WriteString(DepthBuffer[CurrentDepth].String())
-			DepthBuffer[CurrentDepth].Reset()
-
-			CurrentDepth--
-		}
-
-		Functrace.WriteString(DepthBuffer[0].String())
-		DepthBuffer[0].Reset()
-	}
-
-	CurrentDepth = d
 }
 
-func AddEventLog(addr common.Address, topics []common.Hash, data []byte, logType string, function string) {
-	Eventtrace.WriteString(fmt.Sprintf("%s,%s,0x%s,%s,%s\n", addr, topics, hex.EncodeToString(data), logType, function))
+func AddEventLog(addr common.Address, topics []common.Hash, data []byte) {
+	eventTrace.WriteString(fmt.Sprintf("%s,%s,0x%s,%d\n", addr, topics, hex.EncodeToString(data), TraceIndex))
 }
 
-// This is invoked in 1 of 3 contexts, 2 of which occure in AddEventLog:
-// 1. An ERC20 event
-// 2. An ERC721 event
-// 3. Any ethereum transfer event. Hooks .transfer()
-func AddTransferLog(from string, to string, tokenAddr string, value string, depth int, Type string) {
+// Invoked on balance transfer from account A to account B
+func AddTransferLog(from common.Address, to common.Address, value big.Int, depth int) {
 	var output string
 
 	if depth == 0 {
-		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%d,[],%s\n", from, to, tokenAddr, value, depth, TraceIndex, Type)
+		output = fmt.Sprintf("%s,%s,%s,%d,%d,[]\n", from.String(), to.String(), value.String(), depth, TraceIndex)
 	} else {
-		output = fmt.Sprintf("%s,%s,%s,0x%s,%d,%+v,%+v,%s\n", from, to, tokenAddr, value, depth, TraceIndex, CallStack[1:depth+1], Type)
+		output = fmt.Sprintf("%s,%s,%s,%d,%d,%+v\n", from.String(), to.String(), value.String(), depth, TraceIndex, CallStack[1:depth+1])
 	}
 
-	Transfertrace.WriteString(output)
+	transferTrace.WriteString(output)
 }
 
-// we check if erc20 based on following info:
-// 1. if event signature is Transfer(from,to,value) or Approval(owner,spender,value)
-// 2. length of topics is 3
-func IsERC20(tokenAddr common.Address, topics []common.Hash, data []byte, depth int) (ret bool, function string) {
-	if len(topics) != 3 {
-		return false, ""
-	}
-
-	switch topics[0] {
-	case TransferSig:
-		from := topics[1].String()
-		to := topics[2].String()
-		tokenAddr := tokenAddr.String()
-		value := hex.EncodeToString(data)
-		AddTransferLog(from, to, tokenAddr, value, depth, "ERC20")
-		return true, "Transfer"
-	case ApprovalSig:
-		return true, "Approval"
-	default:
-		return false, ""
-	}
-}
-
-// we check if erc721 based on following info
-// 1. if event sig is Transfer(from,to,value) or Approval(owner,spender,value) or ApporvalForAll(address,address,bool)
-// 2. length of topics is 4
-func IsERC721(tokenAddr common.Address, topics []common.Hash, data []byte, depth int) (ret bool, function string) {
-	if len(topics) != 4 {
-		return false, ""
-	}
-
-	switch topics[0] {
-	case TransferSig:
-		from := topics[1].String()
-		to := topics[2].String()
-		tokenAddr := tokenAddr.String()
-		value := hex.EncodeToString(data)
-		AddTransferLog(from, to, tokenAddr, value, depth, "ERC721")
-		return true, "Transfer"
-	case ApprovalSig:
-		return true, "Approval"
-	case ApprovalForAllSig:
-		return true, "ApprovalForAll"
-	default:
-		return false, ""
-	}
-}
-
+// we check if erc721 based on following inf
 func WriteEntry(block big.Int, tx common.Hash, from string, to string, value big.Int, gasPrice big.Int, gasUsed uint64, extra string) {
-	if Optrace.String() != fmt.Sprint(BaseOptracestr+tx.String()) {
-		trace := Collection{
-			Block:        block.String(),
-			Tx:           tx.String(),
-			From:         from,
-			To:           to,
-			Value:        value.String(),
-			GasPrice:     gasPrice.String(),
-			GasUsed:      fmt.Sprintf("%d", gasUsed),
-			Functrace:    Functrace.String()[:len(Functrace.String())-1],
-			Eventtrace:   Eventtrace.String()[:len(Eventtrace.String())-1], // remove newline
-			Optrace:      Optrace.String()[:len(Optrace.String())-len(tx.String())] + extra,
-			TransferLogs: Transfertrace.String()[:len(Transfertrace.String())-1],
-		}
+	opTraceStr := strings.TrimSuffix(string(bytes.Trim(opTrace.Bytes(), "\x00")), "\n")
+	funcTraceStr := strings.TrimSuffix(string(bytes.Trim(funcTrace.Bytes(), "\x00")), "\n")
+	eventTraceStr := strings.TrimSuffix(string(bytes.Trim(eventTrace.Bytes(), "\x00")), "\n")
+	transferTraceStr := strings.TrimSuffix(string(bytes.Trim(transferTrace.Bytes(), "\x00")), "\n")
 
-		err := Db.C("traces").Insert(trace)
-
-		trace = Collection{}
-
-		if err != nil {
-			log.Println(err, ". Unable to log transaction tx: ", tx)
-			return
-		}
+	if opTraceStr == "" {
+		return // early return if tx is eoa->eoa
 	}
 
-	InitTrace()
+	trace := Collection{
+		Block:         int(block.Uint64()),
+		Tx:            tx.String(),
+		From:          from,
+		To:            to,
+		Value:         value.String(),
+		GasPrice:      gasPrice.String(),
+		GasUsed:       fmt.Sprintf("%d", gasUsed),
+		OpTrace:       opTraceStr,
+		FuncTrace:     funcTraceStr,
+		EventTrace:    eventTraceStr,
+		TransferTrace: transferTraceStr,
+	}
+
+	err := Db.C(collection).Insert(trace)
+
+	if err != nil {
+		log.Println(err, ". Unable to log transaction tx: ", tx)
+	}
 }
 
 func CloseMongo() {

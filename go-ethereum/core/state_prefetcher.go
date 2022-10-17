@@ -48,7 +48,6 @@ func newStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and state trie nodes.
 func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, cfg vm.Config, interrupt *uint32) {
-	// modify config struct to signify that we are prefetching, which we should not log
 	modifedCfg := cfg
 	modifedCfg.Prefetch = true
 
@@ -59,7 +58,6 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		evm          = vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, modifedCfg)
 		signer       = types.MakeSigner(p.config, header.Number)
 	)
-
 	// Iterate over and process the individual transactions
 	byzantium := p.config.IsByzantium(block.Number())
 	for i, tx := range block.Transactions() {
@@ -92,9 +90,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 // the transaction successfully, rather to warm up touched data slots.
 func precacheTransaction(msg types.Message, config *params.ChainConfig, gaspool *GasPool, statedb *state.StateDB, header *types.Header, evm *vm.EVM) error {
 	// Update the evm with the new transaction context.
-	context := NewEVMTxContext(msg)
-
-	evm.Reset(context, statedb)
+	evm.Reset(NewEVMTxContext(msg), statedb)
 	// Add addresses to access list if applicable
 	_, err := ApplyMessage(evm, msg, gaspool)
 	return err

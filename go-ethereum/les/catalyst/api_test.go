@@ -1,4 +1,4 @@
-// Copyright 2020 The go-ethereum Authors
+// Copyright 2022 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -24,7 +24,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/beacon"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -46,18 +45,15 @@ var (
 )
 
 func generatePreMergeChain(n int) (*core.Genesis, []*types.Header, []*types.Block) {
-	db := rawdb.NewMemoryDatabase()
-	config := params.AllEthashProtocolChanges
+	config := *params.AllEthashProtocolChanges
 	genesis := &core.Genesis{
-		Config:    config,
+		Config:    &config,
 		Alloc:     core.GenesisAlloc{testAddr: {Balance: testBalance}},
 		ExtraData: []byte("test genesis"),
 		Timestamp: 9000,
 		BaseFee:   big.NewInt(params.InitialBaseFee),
 	}
-	gblock := genesis.ToBlock(db)
-	engine := ethash.NewFaker()
-	blocks, _ := core.GenerateChain(config, gblock, engine, db, n, nil)
+	_, blocks, _ := core.GenerateChainWithGenesis(genesis, ethash.NewFaker(), n, nil)
 	totalDifficulty := big.NewInt(0)
 
 	var headers []*types.Header
@@ -194,7 +190,7 @@ func TestEth2DeepReorg(t *testing.T) {
 			if ethservice.BlockChain().CurrentBlock().NumberU64() != head {
 				t.Fatalf("Chain head shouldn't be updated")
 			}
-			if err := api.setHead(block.Hash()); err != nil {
+			if err := api.setCanonical(block.Hash()); err != nil {
 				t.Fatalf("Failed to set head: %v", err)
 			}
 			if ethservice.BlockChain().CurrentBlock().NumberU64() != block.NumberU64() {

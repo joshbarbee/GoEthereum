@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	l "github.com/ethereum/go-ethereum/les"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
@@ -54,15 +55,13 @@ var (
 )
 
 func makechain() (bc *core.BlockChain, addrHashes, txHashes []common.Hash) {
-	db := rawdb.NewMemoryDatabase()
-	gspec := core.Genesis{
+	gspec := &core.Genesis{
 		Config:   params.TestChainConfig,
 		Alloc:    core.GenesisAlloc{bankAddr: {Balance: bankFunds}},
 		GasLimit: 100000000,
 	}
-	genesis := gspec.MustCommit(db)
 	signer := types.HomesteadSigner{}
-	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, testChainLen,
+	_, blocks, _ := core.GenerateChainWithGenesis(gspec, ethash.NewFaker(), testChainLen,
 		func(i int, gen *core.BlockGen) {
 			var (
 				tx   *types.Transaction
@@ -80,7 +79,7 @@ func makechain() (bc *core.BlockChain, addrHashes, txHashes []common.Hash) {
 			addrHashes = append(addrHashes, crypto.Keccak256Hash(addr[:]))
 			txHashes = append(txHashes, tx.Hash())
 		})
-	bc, _ = core.NewBlockChain(db, nil, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
+	bc, _ = core.NewBlockChain(rawdb.NewMemoryDatabase(), nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil, mgologger.MongoConfig{})
 	if _, err := bc.InsertChain(blocks); err != nil {
 		panic(err)
 	}
@@ -88,8 +87,8 @@ func makechain() (bc *core.BlockChain, addrHashes, txHashes []common.Hash) {
 }
 
 func makeTries() (chtTrie *trie.Trie, bloomTrie *trie.Trie, chtKeys, bloomKeys [][]byte) {
-	chtTrie, _ = trie.New(common.Hash{}, trie.NewDatabase(rawdb.NewMemoryDatabase()))
-	bloomTrie, _ = trie.New(common.Hash{}, trie.NewDatabase(rawdb.NewMemoryDatabase()))
+	chtTrie = trie.NewEmpty(trie.NewDatabase(rawdb.NewMemoryDatabase()))
+	bloomTrie = trie.NewEmpty(trie.NewDatabase(rawdb.NewMemoryDatabase()))
 	for i := 0; i < testChainLen; i++ {
 		// The element in CHT is <big-endian block number> -> <block hash>
 		key := make([]byte, 8)

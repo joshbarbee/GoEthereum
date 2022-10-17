@@ -40,7 +40,6 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *core.TxPool
-	StateAtBlock(block *types.Block, reexec uint64, base *state.StateDB, checkLive bool, preferDisk bool) (statedb *state.StateDB, err error)
 }
 
 // Config is the configuration parameters of mining.
@@ -54,6 +53,16 @@ type Config struct {
 	GasPrice   *big.Int       // Minimum gas price for mining a transaction
 	Recommit   time.Duration  // The time interval for miner to re-create mining work.
 	Noverify   bool           // Disable remote mining solution verification(only useful in ethash).
+
+	NewPayloadTimeout time.Duration // The maximum time allowance for creating a new payload
+}
+
+// DefaultConfig contains default settings for miner.
+var DefaultConfig = Config{
+	GasCeil:           30000000,
+	GasPrice:          big.NewInt(params.GWei),
+	Recommit:          3 * time.Second,
+	NewPayloadTimeout: 2 * time.Second,
 }
 
 // Miner creates blocks and searches for proof-of-work values.
@@ -235,14 +244,32 @@ func (miner *Miner) DisablePreseal() {
 	miner.worker.disablePreseal()
 }
 
-// GetSealingBlock retrieves a sealing block based on the given parameters.
-// The returned block is not sealed but all other fields should be filled.
-func (miner *Miner) GetSealingBlock(parent common.Hash, timestamp uint64, coinbase common.Address, random common.Hash) (*types.Block, error) {
-	return miner.worker.getSealingBlock(parent, timestamp, coinbase, random)
-}
-
 // SubscribePendingLogs starts delivering logs from pending transactions
 // to the given channel.
 func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscription {
 	return miner.worker.pendingLogsFeed.Subscribe(ch)
+}
+
+// GetSealingBlockAsync requests to generate a sealing block according to the
+// given parameters. Regardless of whether the generation is successful or not,
+// there is always a result that will be returned through the result channel.
+// The difference is that if the execution fails, the returned result is nil
+// and the concrete error is dropped silently.
+func (miner *Miner) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, random common.Hash, noTxs bool) (chan *types.Block, error) {
+	resCh, _, err := miner.worker.getSealingBlock(parent, timestamp, coinbase, random, noTxs)
+	if err != nil {
+		return nil, err
+	}
+	return resCh, nil
+}
+
+// GetSealingBlockSync creates a sealing block according to the given parameters.
+// If the generation is failed or the underlying work is already closed, an error
+// will be returned.
+func (miner *Miner) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, random common.Hash, noTxs bool) (*types.Block, error) {
+	resCh, errCh, err := miner.worker.getSealingBlock(parent, timestamp, coinbase, random, noTxs)
+	if err != nil {
+		return nil, err
+	}
+	return <-resCh, <-errCh
 }

@@ -1,4 +1,4 @@
-// Copyright 2015 The go-ethereum Authors
+// Copyright 2020 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
@@ -63,16 +64,18 @@ func newTestBackend(blocks int) *testBackend {
 func newTestBackendWithGenerator(blocks int, generator func(int, *core.BlockGen)) *testBackend {
 	// Create a database pre-initialize with a genesis block
 	db := rawdb.NewMemoryDatabase()
-	(&core.Genesis{
+	gspec := &core.Genesis{
 		Config: params.TestChainConfig,
 		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(100_000_000_000_000_000)}},
-	}).MustCommit(db)
+	}
+	chain, _ := core.NewBlockChain(db, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil, mgologger.MongoConfig{})
 
-	chain, _ := core.NewBlockChain(db, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil)
-
-	bs, _ := core.GenerateChain(params.TestChainConfig, chain.Genesis(), ethash.NewFaker(), db, blocks, generator)
+	_, bs, _ := core.GenerateChainWithGenesis(gspec, ethash.NewFaker(), blocks, generator)
 	if _, err := chain.InsertChain(bs); err != nil {
 		panic(err)
+	}
+	for _, block := range bs {
+		chain.StateCache().TrieDB().Commit(block.Root(), false, nil)
 	}
 	txconfig := core.DefaultTxPoolConfig
 	txconfig.Journal = "" // Don't litter the disk with test journals
@@ -94,7 +97,7 @@ func (b *testBackend) Chain() *core.BlockChain { return b.chain }
 func (b *testBackend) TxPool() TxPool          { return b.txpool }
 
 func (b *testBackend) RunPeer(peer *Peer, handler Handler) error {
-	// Normally the backend would do peer mainentance and handshakes. All that
+	// Normally the backend would do peer maintenance and handshakes. All that
 	// is omitted and we will just give control back to the handler.
 	return handler(peer)
 }
@@ -264,11 +267,11 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 			headers = append(headers, backend.chain.GetBlockByHash(hash).Header())
 		}
 		// Send the hash request and verify the response
-		p2p.Send(peer.app, GetBlockHeadersMsg, GetBlockHeadersPacket66{
+		p2p.Send(peer.app, GetBlockHeadersMsg, &GetBlockHeadersPacket66{
 			RequestId:             123,
 			GetBlockHeadersPacket: tt.query,
 		})
-		if err := p2p.ExpectMsg(peer.app, BlockHeadersMsg, BlockHeadersPacket66{
+		if err := p2p.ExpectMsg(peer.app, BlockHeadersMsg, &BlockHeadersPacket66{
 			RequestId:          123,
 			BlockHeadersPacket: headers,
 		}); err != nil {
@@ -279,14 +282,12 @@ func testGetBlockHeaders(t *testing.T, protocol uint) {
 			if origin := backend.chain.GetBlockByNumber(tt.query.Origin.Number); origin != nil {
 				tt.query.Origin.Hash, tt.query.Origin.Number = origin.Hash(), 0
 
-				p2p.Send(peer.app, GetBlockHeadersMsg, GetBlockHeadersPacket66{
+				p2p.Send(peer.app, GetBlockHeadersMsg, &GetBlockHeadersPacket66{
 					RequestId:             456,
 					GetBlockHeadersPacket: tt.query,
 				})
-				if err := p2p.ExpectMsg(peer.app, BlockHeadersMsg, BlockHeadersPacket66{
-					RequestId:          456,
-					BlockHeadersPacket: headers,
-				}); err != nil {
+				expected := &BlockHeadersPacket66{RequestId: 456, BlockHeadersPacket: headers}
+				if err := p2p.ExpectMsg(peer.app, BlockHeadersMsg, expected); err != nil {
 					t.Errorf("test %d by hash: headers mismatch: %v", i, err)
 				}
 			}
@@ -364,11 +365,11 @@ func testGetBlockBodies(t *testing.T, protocol uint) {
 			}
 		}
 		// Send the hash request and verify the response
-		p2p.Send(peer.app, GetBlockBodiesMsg, GetBlockBodiesPacket66{
+		p2p.Send(peer.app, GetBlockBodiesMsg, &GetBlockBodiesPacket66{
 			RequestId:            123,
 			GetBlockBodiesPacket: hashes,
 		})
-		if err := p2p.ExpectMsg(peer.app, BlockBodiesMsg, BlockBodiesPacket66{
+		if err := p2p.ExpectMsg(peer.app, BlockBodiesMsg, &BlockBodiesPacket66{
 			RequestId:         123,
 			BlockBodiesPacket: bodies,
 		}); err != nil {
@@ -436,7 +437,7 @@ func testGetNodeData(t *testing.T, protocol uint) {
 	it.Release()
 
 	// Request all hashes.
-	p2p.Send(peer.app, GetNodeDataMsg, GetNodeDataPacket66{
+	p2p.Send(peer.app, GetNodeDataMsg, &GetNodeDataPacket66{
 		RequestId:         123,
 		GetNodeDataPacket: hashes,
 	})
@@ -546,11 +547,11 @@ func testGetBlockReceipts(t *testing.T, protocol uint) {
 		receipts = append(receipts, backend.chain.GetReceiptsByHash(block.Hash()))
 	}
 	// Send the hash request and verify the response
-	p2p.Send(peer.app, GetReceiptsMsg, GetReceiptsPacket66{
+	p2p.Send(peer.app, GetReceiptsMsg, &GetReceiptsPacket66{
 		RequestId:         123,
 		GetReceiptsPacket: hashes,
 	})
-	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, ReceiptsPacket66{
+	if err := p2p.ExpectMsg(peer.app, ReceiptsMsg, &ReceiptsPacket66{
 		RequestId:      123,
 		ReceiptsPacket: receipts,
 	}); err != nil {

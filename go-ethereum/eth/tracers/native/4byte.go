@@ -37,14 +37,15 @@ func init() {
 // a reversed signature can be matched against the size of the data.
 //
 // Example:
-//   > debug.traceTransaction( "0x214e597e35da083692f5386141e69f47e973b2c56e7a8073b1ea08fd7571e9de", {tracer: "4byteTracer"})
-//   {
-//     0x27dc297e-128: 1,
-//     0x38cc4831-0: 2,
-//     0x524f3889-96: 1,
-//     0xadf59f99-288: 1,
-//     0xc281d19e-0: 1
-//   }
+//
+//	> debug.traceTransaction( "0x214e597e35da083692f5386141e69f47e973b2c56e7a8073b1ea08fd7571e9de", {tracer: "4byteTracer"})
+//	{
+//	  0x27dc297e-128: 1,
+//	  0x38cc4831-0: 2,
+//	  0x524f3889-96: 1,
+//	  0xadf59f99-288: 1,
+//	  0xc281d19e-0: 1
+//	}
 type fourByteTracer struct {
 	env               *vm.EVM
 	ids               map[string]int   // ids aggregates the 4byte ids found
@@ -55,11 +56,11 @@ type fourByteTracer struct {
 
 // newFourByteTracer returns a native go tracer which collects
 // 4 byte-identifiers of a tx, and implements vm.EVMLogger.
-func newFourByteTracer() tracers.Tracer {
+func newFourByteTracer(ctx *tracers.Context, _ json.RawMessage) (tracers.Tracer, error) {
 	t := &fourByteTracer{
 		ids: make(map[string]int),
 	}
-	return t
+	return t, nil
 }
 
 // isPrecompiled returns whether the addr is a precompile. Logic borrowed from newJsTracer in eth/tracers/js/tracer.go
@@ -131,6 +132,10 @@ func (t *fourByteTracer) CaptureFault(pc uint64, op vm.OpCode, gas, cost uint64,
 func (t *fourByteTracer) CaptureEnd(output []byte, gasUsed uint64, _ time.Duration, err error) {
 }
 
+func (*fourByteTracer) CaptureTxStart(gasLimit uint64) {}
+
+func (*fourByteTracer) CaptureTxEnd(restGas uint64) {}
+
 // GetResult returns the json-encoded nested list of call traces, and any
 // error arising from the encoding or forceful termination (via `Stop`).
 func (t *fourByteTracer) GetResult() (json.RawMessage, error) {
@@ -145,4 +150,8 @@ func (t *fourByteTracer) GetResult() (json.RawMessage, error) {
 func (t *fourByteTracer) Stop(err error) {
 	t.reason = err
 	atomic.StoreUint32(&t.interrupt, 1)
+}
+
+func bytesToHex(s []byte) string {
+	return "0x" + common.Bytes2Hex(s)
 }

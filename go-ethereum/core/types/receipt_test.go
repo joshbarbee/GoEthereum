@@ -86,7 +86,7 @@ func TestDecodeEmptyTypedReceipt(t *testing.T) {
 	input := []byte{0x80}
 	var r Receipt
 	err := rlp.DecodeBytes(input, &r)
-	if err != errEmptyTypedReceipt {
+	if err != errShortTypedReceipt {
 		t.Fatal("wrong error:", err)
 	}
 }
@@ -96,6 +96,10 @@ func TestLegacyReceiptDecoding(t *testing.T) {
 		name   string
 		encode func(*Receipt) ([]byte, error)
 	}{
+		{
+			"ReceiptForStorage",
+			encodeAsReceiptForStorage,
+		},
 		{
 			"StoredReceiptRLP",
 			encodeAsStoredReceiptRLP,
@@ -168,6 +172,10 @@ func TestLegacyReceiptDecoding(t *testing.T) {
 			}
 		})
 	}
+}
+
+func encodeAsReceiptForStorage(want *Receipt) ([]byte, error) {
+	return rlp.EncodeToBytes((*ReceiptForStorage)(want))
 }
 
 func encodeAsStoredReceiptRLP(want *Receipt) ([]byte, error) {

@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/protocols/snap"
+	"github.com/ethereum/go-ethereum/mgologger"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
@@ -39,7 +40,6 @@ import (
 var trieRoot common.Hash
 
 func getChain() *core.BlockChain {
-	db := rawdb.NewMemoryDatabase()
 	ga := make(core.GenesisAlloc, 1000)
 	var a = make([]byte, 20)
 	var mkStorage = func(k, v int) (common.Hash, common.Hash) {
@@ -62,13 +62,11 @@ func getChain() *core.BlockChain {
 		}
 		ga[common.BytesToAddress(a)] = acc
 	}
-	gspec := core.Genesis{
+	gspec := &core.Genesis{
 		Config: params.TestChainConfig,
 		Alloc:  ga,
 	}
-	genesis := gspec.MustCommit(db)
-	blocks, _ := core.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, 2,
-		func(i int, gen *core.BlockGen) {})
+	_, blocks, _ := core.GenerateChainWithGenesis(gspec, ethash.NewFaker(), 2, func(i int, gen *core.BlockGen) {})
 	cacheConf := &core.CacheConfig{
 		TrieCleanLimit:      0,
 		TrieDirtyLimit:      0,
@@ -79,7 +77,7 @@ func getChain() *core.BlockChain {
 		SnapshotWait:        true,
 	}
 	trieRoot = blocks[len(blocks)-1].Root()
-	bc, _ := core.NewBlockChain(db, cacheConf, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
+	bc, _ := core.NewBlockChain(rawdb.NewMemoryDatabase(), cacheConf, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil, mgologger.MongoConfig{})
 	if _, err := bc.InsertChain(blocks); err != nil {
 		panic(err)
 	}

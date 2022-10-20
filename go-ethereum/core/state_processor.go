@@ -143,7 +143,7 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, author *com
 	}
 
 	if !evm.Config.Prefetch {
-		mgologger.WriteEntry(*(receipt.BlockNumber), tx.Hash(), msg.From().String(), to, *msg.Value(), *msg.GasPrice(), result.UsedGas, "")
+		mgologger.WriteEntry(*(receipt.BlockNumber), tx.Hash(), msg.From().String(), to, *msg.Value(), *msg.GasPrice(), result.UsedGas)
 	}
 
 	return receipt, err

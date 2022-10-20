@@ -62,8 +62,8 @@ func InitLogger(cfg MongoConfig) {
 	}
 
 	TraceIndex = 0
-	session, err := mgo.DialWithTimeout(cfg.MongoURI, 0)
 
+	session, err := mgo.DialWithTimeout(cfg.MongoURI, 0)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func AddTransferLog(from common.Address, to common.Address, value big.Int, depth
 }
 
 // we check if erc721 based on following inf
-func WriteEntry(block big.Int, tx common.Hash, from string, to string, value big.Int, gasPrice big.Int, gasUsed uint64, extra string) {
+func WriteEntry(block big.Int, tx common.Hash, from string, to string, value big.Int, gasPrice big.Int, gasUsed uint64) {
 	opTraceStr := strings.TrimSuffix(string(bytes.Trim(opTrace.Bytes(), "\x00")), "\n")
 	funcTraceStr := strings.TrimSuffix(string(bytes.Trim(funcTrace.Bytes(), "\x00")), "\n")
 	eventTraceStr := strings.TrimSuffix(string(bytes.Trim(eventTrace.Bytes(), "\x00")), "\n")

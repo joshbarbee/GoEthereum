@@ -502,6 +502,7 @@ class VariableStack(LatticeElement):
 
     def push(self, var: Variable) -> None:
         """Push a variable to the stack."""
+
         if len(self.value) < self.max_size:
             self.value.append(var)
 
@@ -510,6 +511,7 @@ class VariableStack(LatticeElement):
         Pop a variable off our symbolic stack if one exists, otherwise
         generate a variable from past the bottom.
         """
+
         if len(self.value):
             return self.value.pop()
         else:

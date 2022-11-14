@@ -10,8 +10,8 @@ MONGOURI = "mongodb://127.0.0.1"
 class MongoFetcher():
     def __init__(self) -> None:
         self.client = MongoClient(MONGOURI)
-        self.db = self.client.ethereum
-        self.collection = self.db.traces
+        self.db = self.client.ethlogger
+        self.collection = self.db.ethereum
         self.block : int = 1
 
     '''

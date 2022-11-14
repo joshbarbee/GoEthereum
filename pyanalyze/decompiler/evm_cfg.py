@@ -160,12 +160,6 @@ def blocks_from_ops(ops: t.Iterable[EVMOp]) -> t.Iterable[EVMBasicBlock]:
         else (None, None)
     current = EVMBasicBlock(entry, exit)
 
-    '''call_index = 0
-    for i, op in enumerate(ops):
-        if op.pc == 0 and i != 0:
-            call_index += 1
-        op.call_index = call_index'''
-
     # Linear scan of all EVMOps to create initial EVMBasicBlocks
     for i, op in enumerate(ops):
         op.block = current
@@ -177,7 +171,6 @@ def blocks_from_ops(ops: t.Iterable[EVMOp]) -> t.Iterable[EVMBasicBlock]:
             current = new
 
         elif op.opcode.is_kind_four() or op.opcode.is_kind_five():
-            # Make sure conditions such as 238;ADD 239;CALL will not be split
             if ops[i-1].call_index == op.call_index \
                 and op.pc - ops[i - 1].pc == ops[i - 1].opcode.op_pc_gap() \
                 and not ops[i-1].opcode.possibly_halts():

@@ -123,7 +123,7 @@ class TACGraph(cfg.ControlFlowGraph):
 
         ops = []
 
-        optrace = trace['optrace'].split("\n")[1:]
+        optrace = trace['optrace'].split("\n")
 
         call_index = 0
 
@@ -145,15 +145,16 @@ class TACGraph(cfg.ControlFlowGraph):
                     if val_str.split(":")[1] != "0x":
                         extra = int(val_str.split(":")[1],16)
                     value = int(val_str.split(":")[0],16)
-                elif val_str != "":
+                elif val_str != "0x":
                     value = int(val_str,16)
+                elif val_str == "0x":
+                    value = 0
 
                 ops.append(evm_cfg.EVMOp(pc,opcode,value,depth,call_index,index,extra))
                 
                 # if there is a depth change, we had a call or something. Set the value of call to be the return value
                 if opcode.is_call():
                     call_index += 1
-
 
         return cls(evm_cfg.blocks_from_ops(ops),to)
 

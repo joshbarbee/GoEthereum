@@ -2,6 +2,10 @@
 
 *Go-Ethereum requires us to run a beacon node via a consensur client alongside the Go-Ethereum node, as a result of the hardfork. We use prysm for our consensus client (with no modifications).
 
+Statistics:
+Average RAM when running Geth + Consensus + MongoDB (on same computer): 10.2 gb average
+Average document size (we only collect non-EOA-EOA transfers): 54 kb
+
 ## INSTALLATION & RUNNING:
 PREREQ: Make sure MongoDB is installed on the system. If not, install here: https://www.mongodb.com/docs/manual/installation/
 1. Clone the repo from https://github.com/joshbarbee/GoEthereum.git
@@ -126,5 +130,34 @@ Here is an example of a multi-call transaction, where the ordering of the transa
 0,CALL,0,0x26588a9301b0428d95e6Fc3A5024fcE8BEc12D51,0x4e9Ad443432C3157634f7e30A98DFd524F092455,0,175528,0x27dc297e6cc3f4f81522e891bbee6e2a24143929338e482d4b136a899f3350bb5514bb4600000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000008302e303032343430000000000000000000000000000000000000000000000000,0x,[],[]``` 
 
 Note how the call that initializes first (identified by the first value in each row), is actually the call that is logged last, since the first call does not complete until any child calls complete.
+```
 
-  
+# Decompiler
+The decompiler converts the MongoDB transaction logs into an intermediate representation that is then used by the heuristics analyzer. More information about the decompiler can be found in the file `pyanalze/README.md`. To decompile a single transaction into an intermediate representation, follow the following command (with the pyanalyze folder):
+
+First, install dependencies. Dependencies are located within the `pyanalze/requirements.txt` file and can be installed via `python -m pip install -r requirements.txt`. Then, you can run the analyzer via invoking the following arguments: 
+
+```
+sh ./bin/decompile.sh tx_hash
+```
+
+Where the tx_hash is the transaction hash of the transaction to be analyzed. The decompiler supports other options and can be invoked directly via calling `python bin/decompile`. A list of them all are below
+```
+python ./bin/decompile infile *options
+  *options:
+  - t / tsv: where to output the tabs-seperated facts file to. In the example decompile.sh
+    file, this is set to 'facts-tmp'. This folder is then read from in the analyzer.
+  - o / opcodes: the set of opcodes to output .facts files for. We do analysis over the
+    following opcodes currently:
+    CREATE BALANCE CALLER CALLVALUE STOP RETURN REVERT ORIGIN CALLDATALOAD EQ TIMESTAMP
+    NUMBER DIFFICULTY COINBASE BLOCKHASH GASLIMIT EXTCODESIZE SELFDESTRUCT JUMPI JUMP
+    JUMPDEST SSTORE SLOAD CALL DELEGATE CALLCODE STATICCALL
+  - c / config: overrides the default configuration via a configuration string
+  - C / config_file: overrides the default configuration via a configuration file
+  - v / vv / verbose / prolix: varying levels of verbosity for the decompiler output
+  - V / version: output decompiler version
+  - txhash : the transaction hash of the transction to analyze
+  - u / uri : the uri of the mongoDB instance to connect to
+  - d / db : the database to read from in MongoDB
+  - col / collection : the collection to read from in mongoDB
+

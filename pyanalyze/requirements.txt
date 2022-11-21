@@ -2,20 +2,20 @@
 # See: https://pip.pypa.io/en/stable/reference/pip_install/#requirements-file-format
 
 # Sphinx is used for documentation generation
-Sphinx==1.4.6
+Sphinx==5.3.0
 
 # We use the Read The Docs theme for Sphinx
-sphinx_rtd_theme==0.1.9
+sphinx_rtd_theme==1.1.1
 
 # networkx and pydotplus are used for creating DOT representations of CFGs
-networkx==1.11
+networkx==2.8.8
 pydotplus==2.0.2
 
 # Unit testing uses pytest
-pytest==3.0.2
+pytest==7.2.0
 
 # termcolor for ANSI colours in terminal output
-termcolor==1.1.0
+termcolor==2.1.1
 
 pandas
 

@@ -1,19 +1,17 @@
 from typing import Iterable
 from pymongo import MongoClient, CursorType
 
-MONGOURI = "mongodb://127.0.0.1"
-
 '''
     Class to interface with mongodb to extract tx info based on 
     block number
 '''
 class MongoFetcher():
-    def __init__(self) -> None:
-        self.client = MongoClient(MONGOURI)
-        self.db = self.client.ethlogger
-        self.collection = self.db.ethereum
-        self.block : int = 1
+    def __init__(self, mongoURI : str, db : str, collection : str) -> None:
+        self.client = MongoClient(mongoURI)
+        self.database = getattr(self.client, db)
+        self.collection = getattr(self.database, collection)
 
+        self.block : int = 1
     '''
         Gets all transactions in the mongodb at a certain index 
         N is an optional argument that ifnot specified, we will read

@@ -1,3 +1,5 @@
 .env
 cleanup.sh
 jwt.*
+/data
+consensus/dist/**

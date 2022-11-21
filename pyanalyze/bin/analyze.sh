@@ -1,9 +1,0 @@
-#!/bin/bash
-if [ "$#" -ne 0 ]; then
-    echo "Usage: analyze.sh"
-    exit
-fi
-set -x
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
-rm -rf facts-tmp
-python3.6 $DIR/decompile 0x163e2e25318e6bd0570b525d5c0cf39f439f29940867e8a71836ea6263d43a8a -o --tsv=./facts-tmp --opcodes CREATE BALANCE CALLER CALLVALUE STOP RETURN REVERT ORIGIN CALLDATALOAD EQ TIMESTAMP NUMBER DIFFICULTY COINBASE BLOCKHASH GASLIMIT EXTCODESIZE SELFDESTRUCT JUMPI JUMP JUMPDEST SSTORE SLOAD CALL DELEGATE CALLCODE STATICCALL -n

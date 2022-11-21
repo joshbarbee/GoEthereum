@@ -65,32 +65,6 @@ parser = argparse.ArgumentParser(
                 "three-address code for program analysis. Use config.ini "
                 "to set further configuration options.")
 
-parser.add_argument("-a",
-                    "--disassembly",
-                    action="store_true",
-                    default=False,
-                    help="decompile dissassembled input. Overrides '-b'.")
-
-parser.add_argument("-b",
-                    "--bytecode",
-                    action="store_true",
-                    default=False,
-                    help="disassemble and decompile bytecode input. This is "
-                         "the default mode.")
-
-parser.add_argument("-g",
-                    "--graph",
-                    nargs="?",
-                    const="cfg.html",
-                    metavar="FILE",
-                    default=None,
-                    help="generate a visual representation of basic block "
-                         "relationships with the format inferred from the "
-                         "given output filename (cfg.dot by default). "
-                         "Non-DOT formats like pdf, png, etc. require "
-                         "Graphviz to be installed. Use html to generate "
-                         "an interactive web page of the graph.")
-
 parser.add_argument("-t",
                     "--tsv",
                     nargs="?",
@@ -138,22 +112,39 @@ parser.add_argument("-vv",
                     help="higher verbosity level, including extra debug "
                          "messages from dataflow analysis and elsewhere.")
 
-parser.add_argument("-n",
-                    "--no_out",
-                    action="store_true",
-                    help="do not output decompiled graph.")
-
 parser.add_argument("-V",
                     "--version",
                     action="store_true",
                     help="show program's version number and exit.")
 
-parser.add_argument("infile",
+parser.add_argument("txhash",
                     nargs="?",
                     type=str,
                     default=sys.stdin,
                     help="file from which decompiler input should be read "
                          "(stdin by default).")
+
+parser.add_argument('-u', 
+                    '--uri', 
+                    nargs=1, 
+                    type=str, 
+                    default="mongodb://127.0.0.1"
+                    )
+                    
+parser.add_argument('-col', 
+                    '--collection', 
+                    nargs=1, 
+                    type=str, 
+                    default="ethereum"
+                    ) 
+
+parser.add_argument('-d', 
+                    '--db', 
+                    nargs=1, 
+                    type=str, 
+                    default="ethlogger"
+                    ) 
+                        
 
 # Parse the arguments.
 args = parser.parse_args()
@@ -185,9 +176,9 @@ if args.config is not None:
 
 # Build TAC CFG from mgo file
 try:
-    f = mgofetcher.MongoFetcher()
+    f = mgofetcher.MongoFetcher(args.uri, args.db, args.collection)
 
-    tx = f.get_tx(args.infile)
+    tx = f.get_tx(args.txhash)
     cfg = tac_cfg.TACGraph.from_trace(tx)
     print(f"analyzing: {tx['tx']}")
 
@@ -211,9 +202,6 @@ if args.config is not None:
 #if not args.no_out:
 #    logging.info("Writing string output.")
 #    print(exporter.CFGStringExporter(cfg).export(), file=args.outfile)
-
-if args.graph is not None:
-    exporter.CFGDotExporter(cfg).export(args.graph)
 
 if args.tsv is not None:
     logging.info("Writing TSV output.")

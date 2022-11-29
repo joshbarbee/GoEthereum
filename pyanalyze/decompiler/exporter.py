@@ -2,8 +2,6 @@
 
 import abc
 import csv
-from email.policy import strict
-import logging
 import os
 
 import decompiler.cfg as cfg
@@ -150,14 +148,14 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
         The # of values should match the number of # of defined variables
     '''
     def __generate_simple(self):
-        path = os.path.join(self.__output_dir, "allOps.facts")
-
         lines = []
 
         for block in self.source.blocks:
             for op in block.tac_ops:
-                line = (op.op_index, hex(op.pc), op.opcode.name, op.depth, op.call_index)
-
+                # update addresses for the previous call number that is being returned from
+                if op.opcode.is_call():
+                    for idx, line in enumerate(lines[op.call_index]):
+                        lines[op.call_index][idx] = [hex(next(iter(op.args[1].value.value)))] + line # 2nd argument is address to call
                 define = ()
                 if isinstance(op, tac_cfg.TACAssignOp):
                     vals = ()
@@ -169,13 +167,19 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
                 else:
                     define = ("","") # filler data for tsv
                 uses = ()
+
                 if op.opcode != opcodes.CONST:
                     for i, arg in enumerate(op.args):
                         uses = uses + (arg.value.name, )
 
-                line = line + define + (len(uses), ) + uses
+                line = [op.op_index, hex(op.pc), op.opcode.name, op.depth, op.call_index, *define, len(uses), *uses]
             
-                lines.append(line)
+                if len(lines) >= op.call_index:
+                    lines.append([])
+
+                lines[op.call_index].append(line)
+
+        lines = [l for l in line for l in lines]
 
         self.__generate("opAll.facts", lines)        
 

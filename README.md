@@ -160,4 +160,8 @@ python ./bin/decompile infile *options
   - u / uri : the uri of the mongoDB instance to connect to
   - d / db : the database to read from in MongoDB
   - col / collection : the collection to read from in mongoDB
+```
 
+This will then output the .facts file to the tsv folder path. 
+
+For info on the analysis stage, see `pyanalyze/readme.md`

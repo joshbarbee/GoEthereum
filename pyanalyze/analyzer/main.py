@@ -4,7 +4,6 @@ import sys
 from os.path import abspath, dirname, join
 import time
 
-import pandas as pd
 from memory import Memory
 
 # heuristics
@@ -49,45 +48,84 @@ parser.add_argument("output",
                 default=sys.stdin,
                 help="path to name of new folder to write output of tx analysis to")    
 
+parser.add_argument("-a",
+                "--all",
+                action="store_false",
+                help="To run every heuristic on the current .facts file")   
+
+parser.add_argument("-re",
+                "--reentrancy",
+                action="store_false",
+                help="To run the reentrancy heuristic on the current .facts file")    
+
+parser.add_argument("-uc",
+                "--unchecked-call",
+                action="store_false",
+                help="To run the unchecked-call heuristic on the current .facts file")    
+
+parser.add_argument("-su",
+                "--suicidal",
+                action="store_false",
+                help="To run the suicidal contract heuristic on the current .facts file")    
+
+parser.add_argument("-ts",
+                "--timestamp",
+                action="store_false",
+                help="To run the timestamp depedency heuristic on the current .facts file")   
+
+parser.add_argument("-fs",
+                "--failed-send",
+                action="store_false",
+                help="To run the failed-send heuristic on the current .facts file")   
+
+parser.add_argument("-ub",
+                "--unsecured-balance",
+                action="store_false",
+                help="Whether to run the unsecured balance heuristic on the current .facts file")    
+
 args = parser.parse_args()
 
 log_level = logging.INFO
 logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
-if args.path is None:
-    sys.exit(1)
-
-if args.output is None:
+if args.path is None or args.output is None:
     sys.exit(1)
 
 try:
     start = time.time()
+        
     m = Memory(args.path)
     m.load()
 
-    re = Reentrancy(m, args.output)
-    re.analysis()
-    re.output()
+    if args.all or args.reentrancy:
+        re = Reentrancy(m, args.output)
+        re.analysis()
+        re.output()
 
-    uc = UncheckedCall(m, args.output)
-    uc.analysis()
-    uc.output()
+    if args.all or args.unchecked_call:
+        uc = UncheckedCall(m, args.output)
+        uc.analysis()
+        uc.output()
 
-    sc = Suicidal(m, args.output)
-    sc.analysis()
-    sc.output()
+    if args.all or args.suicidal:
+        sc = Suicidal(m, args.output)
+        sc.analysis()
+        sc.output()
 
-    ts = Timestamp(m, args.output)
-    ts.analysis()
-    ts.output()
+    if args.all or args.timestamp:
+        ts = Timestamp(m, args.output)
+        ts.analysis()
+        ts.output()
 
-    fs = FailedSend(m, args.output)
-    fs.analysis()
-    fs.output()
+    if args.all or args.failed_send:
+        fs = FailedSend(m, args.output)
+        fs.analysis()
+        fs.output()
 
-    ub = UnsecuredBalance(m, args.output)
-    ub.analysis()
-    ub.output()
+    if args.all or args.unsecured_balance:
+        ub = UnsecuredBalance(m, args.output)
+        ub.analysis()
+        ub.output()
 
     logging.info("Analysis finished")
     print(f"Elapsed time: {round(time.time()-start,2)} seconds")

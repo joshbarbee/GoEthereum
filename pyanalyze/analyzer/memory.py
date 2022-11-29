@@ -1,7 +1,8 @@
-from typing import Dict, List
+from typing import Dict, Set
 import pandas as pd
 import numpy as np
 from pyDatalog import pyDatalog
+from variable import Variable
 
 pyDatalog.create_terms('edge,can_reach,value,addr,origin,W,X,Y,Z')
 
@@ -16,6 +17,7 @@ class Memory():
         self.ops : Dict[str, pd.DataFrame] = {} # dict of mapping between opcode and pandas dataframe of opcode
         self.ops_df : pd.DataFrame = None
         self.max_depth : int = 0
+        self.variables : Set[Variable] = {}
 
     def load(self) -> None:
         '''
@@ -52,12 +54,36 @@ class Memory():
         _origin = pd.read_csv(self.path + "/sc_addr.facts", sep='\t', header=None, names=["origin_addr"])
         +addr(0, _origin.iloc[0]['origin_addr'])
 
+        current_addr = _origin.iloc[0]['origin_addr']
         for _, op in self.ops_df.iterrows():
             opcode = op['op']
             depth = op['depth']
 
             if depth > self.max_depth:
                 self.max_depth = depth
+
+            if self.ops[opcode] == None:
+                self.ops[opcode] = [op]
+            else:
+                self.ops[opcode].append(op)
+
+            if opcode in ["CALL", "CALLCODE", "STATTICCALL","DELEGATECALL"]:
+                # resolve the value of var2
+                val = self.ops_df[self.ops_df['def'] == op['var2']]['value'].iloc[0]
+                +addr(op['cn'], val)
+
+            # initialize new variable object with data from creation
+            if not pd.isna(op['def']):
+                #new_var = Variable(op['value'], op['def'], op[''])
+                pass
+
+            print(addr(op['cn'], Y)[0])
+            # get each used variable, find the existing created variable for that var
+            variables = op.loc['var1':].dropna().to_frame()
+
+            for idx, v in variables.iterrows():
+                var = self.variables[v.iloc[0]]
+                print(v.iloc[0], idx)
 
             if not pd.isna(op['var1']):
                 if not pd.isna(op['def']):
@@ -74,16 +100,6 @@ class Memory():
             if not pd.isna(op['def']):
                 +origin(op['def'], opcode)
                 +value(op['def'], op['value'])
-
-            if self.ops[opcode] == None:
-                self.ops[opcode] = [op]
-            else:
-                self.ops[opcode].append(op)
-
-            if opcode in ["CALL", "CALLCODE", "STATTICCALL","DELEGATECALL"]:
-                # resolve the value of var2
-                val = self.ops_df[self.ops_df['def'] == op['var2']]['value'].iloc[0]
-                +addr(op['cn'], val)
 
     def contains_instr(self, var : str, instr : str, call_num : int):
         '''
@@ -175,7 +191,7 @@ class Memory():
 
         all_instrs = self.ops[instr]
 
-        bounded_instrs = all_instrs[all_instrs['depth'].between(min_depth, max_depth, inclusive=True)]
+        bounded_instrs = all_instrs[all_instrs['depth'].between(min_depth, max_depth, inclusive="both")]
 
         if len(bounded_instrs) == 0:
             return None
@@ -241,18 +257,15 @@ class Memory():
         if not inplace:
             df1 = df1.copy()
 
-        def locate_addr(cn,d,loc) -> int:
-            if loc == 2397 or loc== 66482:
-                print(addr(cn,Y))
-
+        def locate_addr(cn,d) -> int:
             if not pd.isna(cn) and not pd.isna(d):
                 return addr(cn,Y).v()[0]
             else:
                 raise ValueError
 
-        df1.loc[:,'addr'] = df1.apply(lambda row: locate_addr(row['cn'],row['depth'], row['loc']), axis=1)
+        df1.loc[:,'addr'] = df1.apply(lambda row: locate_addr(row['cn'],row['depth']), axis=1)
     
-        df2.loc[:,'addr'] = df2.apply(lambda row: locate_addr(row['cn'], row['depth'], row['loc']), axis=1)
+        df2.loc[:,'addr'] = df2.apply(lambda row: locate_addr(row['cn'], row['depth']), axis=1)
 
         df1.loc[:,'addr_matches'] = df1.apply(lambda row: df2.loc[(df2['addr'] == row['addr']) & (df2['loc'] > row['loc'])]['loc'].to_list(), axis=1)
 

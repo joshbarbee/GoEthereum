@@ -30,16 +30,10 @@
 """tac_cfg.py: Definitions of Three-Address Code operations and related
 objects."""
 
-from ast import arg
 from collections import defaultdict
 import copy
-import enum
 import logging
-from operator import index
-from termios import EXTA
 import typing as t
-
-import networkx as nx
                
 import decompiler.cfg as cfg
 import decompiler.evm_cfg as evm_cfg
@@ -48,6 +42,8 @@ import decompiler.opcodes as opcodes
 import decompiler.patterns as patterns
 import decompiler.settings as settings
 from decompiler.lattice import SubsetLatticeElement as ssle
+
+import sys
 
 POSTDOM_END_NODE = "END"
 """The name of the synthetic end node added for post-dominator calculations."""
@@ -122,6 +118,10 @@ class TACGraph(cfg.ControlFlowGraph):
         """
 
         ops = []
+
+        if trace['optrace'] is None:
+            logging.error("No logs contained within the current trace")
+            sys.exit(1)
 
         optrace = trace['optrace'].split("\n")
 

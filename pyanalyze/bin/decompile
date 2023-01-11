@@ -40,10 +40,12 @@ src_path = join(dirname(abspath(__file__)), "..")
 sys.path.insert(0, src_path)
 
 # Local project imports
-import decompiler.exporter as exporter
 import decompiler.tac_cfg as tac_cfg
 import decompiler.settings as settings
 import decompiler.mgofetcher as mgofetcher
+import decompiler.api as api
+
+import decompiler.opcodes as opcodes
 
 # Version string to display with -v
 VERSION = """\
@@ -64,17 +66,6 @@ parser = argparse.ArgumentParser(
     description="An EVM bytecode disassembly decompiler that generates "
                 "three-address code for program analysis. Use config.ini "
                 "to set further configuration options.")
-
-parser.add_argument("-t",
-                    "--tsv",
-                    nargs="?",
-                    const="",
-                    metavar="DIR",
-                    default=None,
-                    help="generate tab-separated .facts files for Souffle "
-                         "and write files to the specified directory, which "
-                         "will be recursively created if it does not exist "
-                         "(current working directory by default).")
 
 parser.add_argument("-o",
                     "--opcodes",
@@ -203,7 +194,17 @@ if args.config is not None:
 #    logging.info("Writing string output.")
 #    print(exporter.CFGStringExporter(cfg).export(), file=args.outfile)
 
-if args.tsv is not None:
-    logging.info("Writing TSV output.")
-    exporter.CFGTsvExporter(cfg).export(output_dir=args.tsv,
-                                        out_opcodes=args.opcodes)
+api = api.API(cfg)
+
+# get all sload, jumpi where JUMPI after sload
+
+sload = api.get_ops(opcodes.SLOAD, min_ci=2)
+jumpi = api.get_ops_by_ops(opcodes.JUMPI, sload, {"call_index", "depth"})
+
+# reduce to sload that has a JUMPI dependency
+sload = api.reduce_use(sload, jumpi, op2_vi=1)
+
+# get sstore, with call depth less than sload call depth
+sstore = api.get_ops(opcodes.SSTORE, min_ci=2)
+
+# value of sstore addr var value should be same as sload

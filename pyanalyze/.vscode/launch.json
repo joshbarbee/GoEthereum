@@ -1,0 +1,21 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Main",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/decompile",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "0xfff9099e2f3c62d8f919e279706c5c1acf1b9f332171c7e28caef1681d905fc8",
+                "-o",
+                "--opcodes CREATE BALANE CALLER CALLVALUE STOP RETURN REVERT ORIGIN CALLDATALOAD EQ TIMESTAMP NUMBER DIFFICULTY COINBASE BLOCKHASH GASLMIT EXTCODESIZE SELFDESTRUCT JUMPI JUMP JUMPDEST SSTORE SLOAD CALL DELEGATE CALLCODE STATICCALL"
+            ]
+        }
+    ]
+}

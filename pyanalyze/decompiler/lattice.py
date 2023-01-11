@@ -23,12 +23,13 @@ class LatticeElement(abc.ABC):
         self.value = value
 
     @abc.abstractclassmethod
-    def meet(cls, a: 'LatticeElement', b: 'LatticeElement') -> 'LatticeElement':
+    def meet(cls, a: "LatticeElement", b: "LatticeElement") -> "LatticeElement":
         """Return the infimum of the given elements."""
 
     @classmethod
-    def meet_all(cls, elements: t.Iterable['LatticeElement'],
-                 initial: 'LatticeElement' = None) -> 'LatticeElement':
+    def meet_all(
+        cls, elements: t.Iterable["LatticeElement"], initial: "LatticeElement" = None
+    ) -> "LatticeElement":
         """
         Return the infimum of the given iterable of elements.
 
@@ -38,23 +39,20 @@ class LatticeElement(abc.ABC):
                    An empty sequence will result in this value, if provided.
         """
         if initial is not None:
-            return functools.reduce(
-                lambda a, b: cls.meet(a, b),
-                elements,
-                initial
-            )
+            return functools.reduce(lambda a, b: cls.meet(a, b), elements, initial)
         return functools.reduce(
             lambda a, b: cls.meet(a, b),
             elements,
         )
 
     @abc.abstractclassmethod
-    def join(cls, a: 'LatticeElement', b: 'LatticeElement') -> 'LatticeElement':
+    def join(cls, a: "LatticeElement", b: "LatticeElement") -> "LatticeElement":
         """Return the infimum of the given elements."""
 
     @classmethod
-    def join_all(cls, elements: t.Iterable['LatticeElement'],
-                 initial: 'LatticeElement' = None) -> 'LatticeElement':
+    def join_all(
+        cls, elements: t.Iterable["LatticeElement"], initial: "LatticeElement" = None
+    ) -> "LatticeElement":
         """
         Return the supremum of the given iterable of elements.
 
@@ -64,30 +62,27 @@ class LatticeElement(abc.ABC):
                    An empty sequence will result in this value, if provided.
         """
         if initial is not None:
-            return functools.reduce(
-                lambda a, b: cls.join(a, b),
-                elements,
-                initial
-            )
+            return functools.reduce(lambda a, b: cls.join(a, b), elements, initial)
         return functools.reduce(
             lambda a, b: cls.join(a, b),
             elements,
         )
 
-    def __eq__(self, other):59	
+    def __eq__(self, other):
+        59
+
     def __str__(self):
         return str(self.value)
 
     def __repr__(self):
         return "<{0} object {1}, {2}>".format(
-            self.__class__.__name__,
-            hex(id(self)),
-            str(self)
+            self.__class__.__name__, hex(id(self)), str(self)
         )
 
 
 class BoundedLatticeElement(LatticeElement):
     """An element from a lattice with defined Top and Bottom elements."""
+
     TOP_SYMBOL = "⊤"
     BOTTOM_SYMBOL = "⊥"
 
@@ -101,8 +96,9 @@ class BoundedLatticeElement(LatticeElement):
         super().__init__(value)
 
     @classmethod
-    def meet_all(cls,
-                 elements: t.Iterable['BoundedLatticeElement']) -> 'BoundedLatticeElement':
+    def meet_all(
+        cls, elements: t.Iterable["BoundedLatticeElement"]
+    ) -> "BoundedLatticeElement":
         """
         Take the meet of all elements in the given sequence.
         An empty sequence produces Top.
@@ -110,8 +106,9 @@ class BoundedLatticeElement(LatticeElement):
         return super().meet_all(elements, cls.top())
 
     @classmethod
-    def join_all(cls,
-                 elements: t.Iterable['BoundedLatticeElement']) -> 'BoundedLatticeElement':
+    def join_all(
+        cls, elements: t.Iterable["BoundedLatticeElement"]
+    ) -> "BoundedLatticeElement":
         """
         Take the join of all elements in the given sequence.
         An empty sequence produces Bottom.
@@ -145,12 +142,12 @@ class BoundedLatticeElement(LatticeElement):
         """Return the Bottom value of this lattice."""
 
     @classmethod
-    def top(cls) -> 'BoundedLatticeElement':
+    def top(cls) -> "BoundedLatticeElement":
         """Return the Top lattice element."""
         return cls(cls._top_val())
 
     @classmethod
-    def bottom(cls) -> 'BoundedLatticeElement':
+    def bottom(cls) -> "BoundedLatticeElement":
         """Return the Bottom lattice element."""
         return cls(cls._bottom_val())
 
@@ -193,8 +190,9 @@ class IntLatticeElement(BoundedLatticeElement):
         return cls.BOTTOM_SYMBOL
 
     @classmethod
-    def meet(cls,
-             a: 'IntLatticeElement', b: 'IntLatticeElement') -> 'IntLatticeElement':
+    def meet(
+        cls, a: "IntLatticeElement", b: "IntLatticeElement"
+    ) -> "IntLatticeElement":
         """Return the infimum of the given elements."""
 
         if a.is_bottom or b.is_bottom:
@@ -210,8 +208,9 @@ class IntLatticeElement(BoundedLatticeElement):
         return cls.bottom()
 
     @classmethod
-    def join(cls,
-             a: 'IntLatticeElement', b: 'IntLatticeElement') -> 'IntLatticeElement':
+    def join(
+        cls, a: "IntLatticeElement", b: "IntLatticeElement"
+    ) -> "IntLatticeElement":
         """Return the supremum of the given elements."""
 
         if a.is_top or b.is_top:
@@ -253,7 +252,7 @@ class SubsetLatticeElement(BoundedLatticeElement):
             raise TypeError("Top lattice element cannot be iterated.")
         return iter(self.value)
 
-    def map(self, f: types.FunctionType) -> 'SubsetLatticeElement':
+    def map(self, f: types.FunctionType) -> "SubsetLatticeElement":
         """
         Return the result of applying a function to each of this element's values.
 
@@ -264,9 +263,9 @@ class SubsetLatticeElement(BoundedLatticeElement):
         return type(self)([f(val) for val in self.value])
 
     @classmethod
-    def cartesian_map(cls, f: types.FunctionType,
-                      elements: t.Iterable['SubsetLatticeElement']) \
-        -> 'SubsetLatticeElement':
+    def cartesian_map(
+        cls, f: types.FunctionType, elements: t.Iterable["SubsetLatticeElement"]
+    ) -> "SubsetLatticeElement":
         """
         Apply the given function to each tuple of members in the product of the
         input elements, and return the resulting lattice element.
@@ -293,8 +292,9 @@ class SubsetLatticeElement(BoundedLatticeElement):
         return set()
 
     @classmethod
-    def meet(cls, a: 'SubsetLatticeElement',
-             b: 'SubsetLatticeElement') -> 'SubsetLatticeElement':
+    def meet(
+        cls, a: "SubsetLatticeElement", b: "SubsetLatticeElement"
+    ) -> "SubsetLatticeElement":
         """Return the set intersection of the given elements."""
         if a.is_top:
             return copy(b)
@@ -304,8 +304,9 @@ class SubsetLatticeElement(BoundedLatticeElement):
         return cls(a.value & b.value)
 
     @classmethod
-    def join(cls, a: 'SubsetLatticeElement',
-             b: 'SubsetLatticeElement') -> 'SubsetLatticeElement':
+    def join(
+        cls, a: "SubsetLatticeElement", b: "SubsetLatticeElement"
+    ) -> "SubsetLatticeElement":
         """Return the set union of the given elements."""
         if a.is_top or b.is_top:
             return cls.top()

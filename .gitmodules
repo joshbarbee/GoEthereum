@@ -1,3 +1,0 @@
-[submodule "go-ethereum/tests/testdata/tests"]
-	path = go-ethereum/tests/testdata/tests
-	url = https://github.com/ethereum/tests.git

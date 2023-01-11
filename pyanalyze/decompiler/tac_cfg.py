@@ -34,7 +34,7 @@ from collections import defaultdict
 import copy
 import logging
 import typing as t
-               
+
 import decompiler.cfg as cfg
 import decompiler.evm_cfg as evm_cfg
 import decompiler.memtypes as mem
@@ -50,7 +50,10 @@ POSTDOM_END_NODE = "END"
 UNRES_DEST = "?"
 """The name of the unresolved jump destination auxiliary node."""
 
-trim_0x_to_int = lambda x: int(str(x)[2:],16) if str(x)[0:2] == "0x" else int(str(x),16)
+trim_0x_to_int = (
+    lambda x: int(str(x)[2:], 16) if str(x)[0:2] == "0x" else int(str(x), 16)
+)
+
 
 class TACGraph(cfg.ControlFlowGraph):
     """
@@ -58,7 +61,7 @@ class TACGraph(cfg.ControlFlowGraph):
     the edges between them.
     """
 
-    def __init__(self, evm_blocks: t.Iterable[evm_cfg.EVMBasicBlock], to_addr : str):
+    def __init__(self, evm_blocks: t.Iterable[evm_cfg.EVMBasicBlock], to_addr: str):
         """
         Construct a TAC control flow graph from a given sequence of EVM blocks.
         Immediately after conversion, constants will be propagated and folded
@@ -109,7 +112,7 @@ class TACGraph(cfg.ControlFlowGraph):
         self.connect_blocks()
 
     @classmethod
-    def from_trace(cls, trace: t.Iterable) -> 'TACGraph':
+    def from_trace(cls, trace: t.Iterable) -> "TACGraph":
         """
         Construct and return a TACGraph from the given Geth optrace.
 
@@ -119,16 +122,16 @@ class TACGraph(cfg.ControlFlowGraph):
 
         ops = []
 
-        if trace['optrace'] is None:
+        if trace["optrace"] is None:
             logging.error("No logs contained within the current trace")
             sys.exit(1)
 
-        optrace = trace['optrace'].split("\n")
+        optrace = trace["optrace"].split("\n")
 
         call_index = 0
 
-        to = trace['to']
-        
+        to = trace["to"]
+
         for index, l in enumerate(optrace):
             if len(l.strip()) > 0:
                 args = l.strip().split(",")
@@ -138,25 +141,27 @@ class TACGraph(cfg.ControlFlowGraph):
 
                 val_str = args[5]
 
-                value = None # parsing as hex string
+                value = None  # parsing as hex string
                 extra = None
 
                 if ":" in val_str:
                     if val_str.split(":")[1] != "0x":
-                        extra = int(val_str.split(":")[1],16)
-                    value = int(val_str.split(":")[0],16)
+                        extra = int(val_str.split(":")[1], 16)
+                    value = int(val_str.split(":")[0], 16)
                 elif val_str != "0x":
-                    value = int(val_str,16)
+                    value = int(val_str, 16)
                 elif val_str == "0x":
                     value = 0
 
-                ops.append(evm_cfg.EVMOp(pc,opcode,value,depth,call_index,index,extra))
-                
+                ops.append(
+                    evm_cfg.EVMOp(pc, opcode, value, depth, call_index, index, extra)
+                )
+
                 # if there is a depth change, we had a call or something. Set the value of call to be the return value
                 if opcode.is_call():
                     call_index += 1
 
-        return cls(evm_cfg.blocks_from_ops(ops),to)
+        return cls(evm_cfg.blocks_from_ops(ops), to)
 
     @property
     def tac_ops(self):
@@ -166,24 +171,23 @@ class TACGraph(cfg.ControlFlowGraph):
 
     @property
     def last_op(self):
-        return max((b.last_op for b in self.blocks),
-                   key=lambda o: o.pc)
+        return max((b.last_op for b in self.blocks), key=lambda o: o.pc)
 
     def connect_blocks(self) -> None:
         if len(list(self.blocks)) == 0:
             return
-        
+
         for i in range(len(self.blocks)):
             current = self.blocks[i]
             if i == 0 and len(self.blocks) > 1:
-                current.succs = [self.blocks[i+1]]
+                current.succs = [self.blocks[i + 1]]
                 current.preds = []
             elif i == len(self.blocks) - 1:
-                current.preds = [self.blocks[i-1]]
+                current.preds = [self.blocks[i - 1]]
                 current.succs = []
             else:
-                current.preds = [self.blocks[i-1]]
-                current.succs = [self.blocks[i+1]]
+                current.preds = [self.blocks[i - 1]]
+                current.succs = [self.blocks[i + 1]]
 
     def apply_operations(self, use_sets=False) -> None:
         """
@@ -197,6 +201,7 @@ class TACGraph(cfg.ControlFlowGraph):
         for block in self.blocks:
             block.apply_operations(self.stack, self.memory, use_sets)
 
+
 class TACBasicBlock(evm_cfg.EVMBasicBlock):
     """
     A basic block containing both three-address code, and its
@@ -204,11 +209,15 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
     applied to the stack as a consequence of its execution.
     """
 
-    def __init__(self, entry_pc: int, exit_pc: int,
-                 tac_ops: t.List['TACOp'],
-                 evm_ops: t.List[evm_cfg.EVMOp],
-                 delta_stack: mem.VariableStack,
-                 cfg=None):
+    def __init__(
+        self,
+        entry_pc: int,
+        exit_pc: int,
+        tac_ops: t.List["TACOp"],
+        evm_ops: t.List[evm_cfg.EVMOp],
+        delta_stack: mem.VariableStack,
+        cfg=None,
+    ):
         """
         Args:
           entry_pc: The pc of the first byte in the source EVM block
@@ -235,7 +244,7 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
         """
 
         super().__init__(entry_pc, exit_pc, evm_ops)
-        
+
         self.tac_ops = tac_ops
         """A sequence of TACOps whose execution is equivalent to the source EVM
            code"""
@@ -269,8 +278,18 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
         stack_pops = "Stack pops: {}".format(self.delta_stack.empty_pops)
         stack_adds = "Stack additions: {}".format(str(self.delta_stack))
         exit_stack = "Exit stack: {}".format(str(self.exit_stack))
-        return "\n".join([super_str, self._STR_SEP, op_seq, self._STR_SEP,
-                          entry_stack, stack_pops, stack_adds, exit_stack])
+        return "\n".join(
+            [
+                super_str,
+                self._STR_SEP,
+                op_seq,
+                self._STR_SEP,
+                entry_stack,
+                stack_pops,
+                stack_adds,
+                exit_stack,
+            ]
+        )
 
     def accept(self, visitor: patterns.Visitor) -> None:
         """
@@ -288,10 +307,13 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
     def __deepcopy__(self, memodict={}):
         """Return a copy of this block."""
 
-        new_block = TACBasicBlock(self.entry, self.exit,
-                                  copy.deepcopy(self.tac_ops, memodict),
-                                  [copy.copy(op) for op in self.evm_ops],
-                                  copy.deepcopy(self.delta_stack, memodict))
+        new_block = TACBasicBlock(
+            self.entry,
+            self.exit,
+            copy.deepcopy(self.tac_ops, memodict),
+            [copy.copy(op) for op in self.evm_ops],
+            copy.deepcopy(self.delta_stack, memodict),
+        )
 
         new_block.fallthrough = self.fallthrough
         new_block.has_unresolved_jump = self.has_unresolved_jump
@@ -308,7 +330,7 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
         return new_block
 
     @property
-    def last_op(self) -> 'TACOp':
+    def last_op(self) -> "TACOp":
         """Return the last TAC operation in this block if it exists."""
         if len(self.tac_ops):
             return self.tac_ops[-1]
@@ -336,7 +358,9 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
                 for site in op.lhs.def_sites:
                     site.block = self
 
-    def apply_operations(self, stack : defaultdict(dict) = None, memory : bytearray = None, use_sets=False) -> None:
+    def apply_operations(
+        self, stack: defaultdict(dict) = None, memory: bytearray = None, use_sets=False
+    ) -> None:
         """
         Propagate and fold constants through the arithmetic TAC instructions
         in this block.
@@ -350,17 +374,24 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
                 op.lhs.values = op.args[0].value.values
 
             # Special cases: they both belong to three_store_two.
-            elif op.opcode == opcodes.CALLDATACOPY or op.opcode == opcodes.CODECOPY \
-                or op.opcode == opcodes.RETURNDATACOPY:
+            elif (
+                op.opcode == opcodes.CALLDATACOPY
+                or op.opcode == opcodes.CODECOPY
+                or op.opcode == opcodes.RETURNDATACOPY
+            ):
                 destoffset = trim_0x_to_int(op.args[0])
                 length = trim_0x_to_int(op.args[2])
                 value = op.value
-                memory[destoffset: destoffset + length] = value.to_bytes(length, byteorder='big')
+                memory[destoffset : destoffset + length] = value.to_bytes(
+                    length, byteorder="big"
+                )
             elif op.opcode == opcodes.EXTCODECOPY:
                 destoffset = trim_0x_to_int(op.args[1])
                 length = trim_0x_to_int(op.args[3])
                 value = op.value
-                memory[destoffset: destoffset + length] = value.to_bytes(length, byteorder='big')
+                memory[destoffset : destoffset + length] = value.to_bytes(
+                    length, byteorder="big"
+                )
 
             # Special cases: cases for kind one and two, but those opcodes are not in three_store
             # Those opcodes have already had their value assigned to the lhs in the __handal_evm_op
@@ -376,18 +407,18 @@ class TACBasicBlock(evm_cfg.EVMBasicBlock):
                 var_name = "S[{}]".format(op.args[0])
                 var_value = op.args[1].value.values
                 stack[var_name] = var_value
-            elif op.opcode == opcodes.MSTORE:  
+            elif op.opcode == opcodes.MSTORE:
                 offset = trim_0x_to_int(op.args[0])
                 value = trim_0x_to_int(op.args[1])
-                memory[offset: offset + 32] = value.to_bytes(32, byteorder='big')
+                memory[offset : offset + 32] = value.to_bytes(32, byteorder="big")
             elif op.opcode == opcodes.MSTORE8:
                 offset = trim_0x_to_int(op.args[0])
                 value = trim_0x_to_int(op.args[1])
-                memory[offset: offset + 1] = value.to_bytes(8, byteorder='big')
+                memory[offset : offset + 1] = value.to_bytes(8, byteorder="big")
 
             elif op.opcode.is_arithmetic():
                 if op.constant_args() or (op.constrained_args() and use_sets):
-                    rhs = [arg.value for arg in op.args] 
+                    rhs = [arg.value for arg in op.args]
                     op.lhs.values = mem.Variable.arith_op(op.opcode.name, rhs).values
                 elif not op.lhs.is_unconstrained:
                     op.lhs.widen_to_top()
@@ -401,9 +432,17 @@ class TACOp(patterns.Visitable):
     of the EVM instruction it was derived from.
     """
 
-    def __init__(self, opcode: opcodes.OpCode, args: t.List['TACArg'],
-                 pc: int, block=None, value : int = None, op_index : int = None,
-                 depth : int = None, call_index : int = None):
+    def __init__(
+        self,
+        opcode: opcodes.OpCode,
+        args: t.List["TACArg"],
+        pc: int,
+        block=None,
+        value: int = None,
+        op_index: int = None,
+        depth: int = None,
+        call_index: int = None,
+    ):
         """
         Args:
           opcode: the operation being performed.
@@ -417,7 +456,7 @@ class TACOp(patterns.Visitable):
         self.pc = pc
         self.block = block
 
-        self.value = value;
+        self.value = value
         self.op_index = op_index
         self.call_index = call_index
         self.depth = depth
@@ -431,16 +470,16 @@ class TACOp(patterns.Visitable):
             else:
                 lhs = "S[{}]".format(self.args[0])
 
-            return "{}: {} = {}".format(hex(self.pc), lhs,
-                                        " ".join([str(arg) for arg in self.args[1:]]))
-        return "{}: {} {}".format(hex(self.pc), self.opcode,
-                                  " ".join([str(arg) for arg in self.args]))
+            return "{}: {} = {}".format(
+                hex(self.pc), lhs, " ".join([str(arg) for arg in self.args[1:]])
+            )
+        return "{}: {} {}".format(
+            hex(self.pc), self.opcode, " ".join([str(arg) for arg in self.args])
+        )
 
     def __repr__(self):
         return "<{0} object {1}, {2}>".format(
-            self.__class__.__name__,
-            hex(id(self)),
-            self.__str__()
+            self.__class__.__name__, hex(id(self)), self.__str__()
         )
 
     def constant_args(self) -> bool:
@@ -452,7 +491,7 @@ class TACOp(patterns.Visitable):
         return all([not arg.value.is_unconstrained for arg in self.args])
 
     @classmethod
-    def convert_jump_to_throw(cls, op: 'TACOp') -> 'TACOp':
+    def convert_jump_to_throw(cls, op: "TACOp") -> "TACOp":
         """
         Given a jump, convert it to a throw, preserving the condition var if JUMPI.
         Otherwise, return the given operation unchanged.
@@ -465,12 +504,11 @@ class TACOp(patterns.Visitable):
             return cls(opcodes.THROWI, [op.args[1]], op.pc, op.block)
 
     def __deepcopy__(self, memodict={}):
-        new_op = type(self)(self.opcode,
-                            copy.deepcopy(self.args, memodict),
-                            self.pc,
-                            self.block)
+        new_op = type(self)(
+            self.opcode, copy.deepcopy(self.args, memodict), self.pc, self.block
+        )
         return new_op
-    
+
     @property
     def has_lhs(self) -> bool:
         return False
@@ -482,10 +520,19 @@ class TACAssignOp(TACOp):
     this operation's result is implicitly bound.
     """
 
-    def __init__(self, lhs: mem.Variable, opcode: opcodes.OpCode,
-                 args: t.List['TACArg'], pc: int, block=None,
-                 print_name: bool = True, value_extra : int = None, op_index : int = None,
-                 depth : int = None, call_index : int = None):
+    def __init__(
+        self,
+        lhs: mem.Variable,
+        opcode: opcodes.OpCode,
+        args: t.List["TACArg"],
+        pc: int,
+        block=None,
+        print_name: bool = True,
+        value_extra: int = None,
+        op_index: int = None,
+        depth: int = None,
+        call_index: int = None,
+    ):
         """
         Args:
           lhs: The Variable that will receive the result of this operation.
@@ -500,7 +547,7 @@ class TACAssignOp(TACOp):
         self.lhs = lhs
         self.print_name = print_name
 
-        self.value_extra = value_extra;
+        self.value_extra = value_extra
         self.op_index = op_index
         self.call_index = call_index
         self.depth = depth
@@ -513,24 +560,28 @@ class TACAssignOp(TACOp):
                 rhs = "M[{}]".format(self.args[0])
 
             return "{}: {} = {}".format(hex(self.pc), self.lhs.identifier, rhs)
-        arglist = ([str(self.opcode)] if self.print_name else []) \
-                  + [str(arg) for arg in self.args]
-        return "{}: {} = {}".format(hex(self.pc), self.lhs.identifier,
-                                    " ".join(arglist))
+        arglist = ([str(self.opcode)] if self.print_name else []) + [
+            str(arg) for arg in self.args
+        ]
+        return "{}: {} = {}".format(
+            hex(self.pc), self.lhs.identifier, " ".join(arglist)
+        )
 
     def __deepcopy__(self, memodict={}):
         """
         Return a copy of this TACAssignOp, deep copying the args and vars,
         but leaving block references unchanged.
         """
-        new_op = type(self)(copy.deepcopy(self.lhs, memodict),
-                            self.opcode,
-                            copy.deepcopy(self.args, memodict),
-                            self.pc,
-                            self.block,
-                            self.print_name)
+        new_op = type(self)(
+            copy.deepcopy(self.lhs, memodict),
+            self.opcode,
+            copy.deepcopy(self.args, memodict),
+            self.pc,
+            self.block,
+            self.print_name,
+        )
         return new_op
-        
+
     @property
     def has_lhs(self) -> bool:
         return True
@@ -637,16 +688,19 @@ class Destackifier:
         """Reinitialise all structures in preparation for converting a block."""
         self.ops = []
         self.stack = mem.VariableStack()
-        self.block_entry = evm_block.evm_ops[0].pc \
-            if len(evm_block.evm_ops) > 0 else None
+        self.block_entry = (
+            evm_block.evm_ops[0].pc if len(evm_block.evm_ops) > 0 else None
+        )
 
     def __new_var(self) -> mem.Variable:
         """Construct and return a new variable with the next free identifier."""
 
         # Generate the new variable, numbering it by the implicit stack location
         # it came from.
-        var = mem.Variable.top(name="V{}".format(self.stack_vars),
-                               def_sites=ssle([TACLocRef(None, self.block_entry)]))
+        var = mem.Variable.top(
+            name="V{}".format(self.stack_vars),
+            def_sites=ssle([TACLocRef(None, self.block_entry)]),
+        )
         self.stack_vars += 1
         return var
 
@@ -661,7 +715,9 @@ class Destackifier:
             if first_opcode.pc == 0:
                 pre_stack = mem.VariableStack(depth=first_opcode.depth)
 
-            elif first_opcode.opcode.is_kind_four() or first_opcode.opcode.is_kind_five():          
+            elif (
+                first_opcode.opcode.is_kind_four() or first_opcode.opcode.is_kind_five()
+            ):
                 pre_stack = stacks.pop()
                 if first_opcode.depth != pre_stack.depth:
                     pre_stack = stacks.pop()
@@ -669,20 +725,22 @@ class Destackifier:
         self.__fresh_init(evm_block)
 
         self.stack = pre_stack
-        
+
         for op in evm_block.evm_ops:
             self.__handle_evm_op(op)
 
         entry = evm_block.evm_ops[0].pc if len(evm_block.evm_ops) > 0 else None
-        exit = evm_block.evm_ops[-1].pc + evm_block.evm_ops[-1].opcode.push_len() \
-            if len(evm_block.evm_ops) > 0 else None
+        exit = (
+            evm_block.evm_ops[-1].pc + evm_block.evm_ops[-1].opcode.push_len()
+            if len(evm_block.evm_ops) > 0
+            else None
+        )
 
         # If the block is empty, append a NOP before continuing.
         if len(self.ops) == 0:
             self.ops.append(TACOp(opcodes.NOP, [], entry))
 
-        new_block = TACBasicBlock(entry, exit, self.ops, evm_block.evm_ops,
-                                  self.stack)
+        new_block = TACBasicBlock(entry, exit, self.ops, evm_block.evm_ops, self.stack)
 
         # Link up new ops and def sites to the block that contains them.
         new_block.reset_block_refs()
@@ -694,9 +752,10 @@ class Destackifier:
 
             if first_opcode.pc == 0 and not last_opcode.opcode.possibly_halts():
                 stacks.append(self.stack)
-            
-            if (first_opcode.opcode.is_kind_four() or first_opcode.opcode.is_kind_five())\
-                and not last_opcode.opcode.possibly_halts():
+
+            if (
+                first_opcode.opcode.is_kind_four() or first_opcode.opcode.is_kind_five()
+            ) and not last_opcode.opcode.possibly_halts():
                 stacks.append(self.stack)
 
         return new_block
@@ -746,11 +805,15 @@ class Destackifier:
             args = [TACArg.from_var(var) for var in self.stack.pop_many(op.opcode.pop)]
             inst = TACOp(opcodes.LOG, args, op.pc)
         elif op.opcode == opcodes.MSTORE:
-            args = [TACArg.from_var(var) for var in self.stack.pop_many(opcodes.MSTORE.pop)]
+            args = [
+                TACArg.from_var(var) for var in self.stack.pop_many(opcodes.MSTORE.pop)
+            ]
             inst = TACOp(op.opcode, args, op.pc)
         elif op.opcode == opcodes.MSTORE8:
-            args = [TACArg.from_var(var) for var in self.stack.pop_many(opcodes.MSTORE8.pop)]
-            
+            args = [
+                TACArg.from_var(var) for var in self.stack.pop_many(opcodes.MSTORE8.pop)
+            ]
+
             inst = TACOp(op.opcode, args, op.pc)
 
         # SLOAD is same as MLOAD, they both hasve value in the tempt file
@@ -760,7 +823,9 @@ class Destackifier:
             args = [TACArg.from_var(self.stack.pop())]
             inst = TACAssignOp(new_var, op.opcode, args, op.pc)
         elif op.opcode == opcodes.SSTORE:
-            args = [TACArg.from_var(var) for var in self.stack.pop_many(opcodes.SSTORE.pop)]
+            args = [
+                TACArg.from_var(var) for var in self.stack.pop_many(opcodes.SSTORE.pop)
+            ]
             inst = TACOp(op.opcode, args, op.pc)
 
         # Special cases for kind one, such as CALLVALUE

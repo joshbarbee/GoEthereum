@@ -16,3 +16,4 @@ pymongo
 
 numpy
 
+NetworkX

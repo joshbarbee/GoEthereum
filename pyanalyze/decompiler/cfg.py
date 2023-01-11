@@ -27,7 +27,7 @@ class ControlFlowGraph(patterns.Visitable):
     def __str__(self):
         return self.__STR_SEP.join(str(b) for b in self.blocks)
 
-    def remove_block(self, block: 'BasicBlock') -> None:
+    def remove_block(self, block: "BasicBlock") -> None:
         """
         Remove the given block from the graph, disconnecting all incident edges.
         """
@@ -41,34 +41,34 @@ class ControlFlowGraph(patterns.Visitable):
 
         self.blocks.remove(block)
 
-    def add_block(self, block: 'BasicBlock') -> None:
+    def add_block(self, block: "BasicBlock") -> None:
         """
         Add the given block to the graph, assuming it does not already exist.
         """
         if block not in self.blocks:
             self.blocks.append(block)
 
-    def has_edge(self, head: 'BasicBlock', tail: 'BasicBlock') -> bool:
+    def has_edge(self, head: "BasicBlock", tail: "BasicBlock") -> bool:
         """
         True iff the edge between head and tail exists in the graph.
         """
         return tail in head.succs
 
-    def remove_edge(self, head: 'BasicBlock', tail: 'BasicBlock') -> None:
+    def remove_edge(self, head: "BasicBlock", tail: "BasicBlock") -> None:
         """Remove the CFG edge that goes from head to tail."""
         if tail in head.succs:
             head.succs.remove(tail)
         if head in tail.preds:
             tail.preds.remove(head)
 
-    def add_edge(self, head: 'BasicBlock', tail: 'BasicBlock'):
+    def add_edge(self, head: "BasicBlock", tail: "BasicBlock"):
         """Add a CFG edge that goes from head to tail."""
         if tail not in head.succs:
             head.succs.append(tail)
         if head not in tail.preds:
             tail.preds.append(head)
 
-    def get_blocks_by_pc(self, pc: int) -> t.List['BasicBlock']:
+    def get_blocks_by_pc(self, pc: int) -> t.List["BasicBlock"]:
         """Return the blocks whose spans include the given program counter value."""
         blocks = []
         for block in self.blocks:
@@ -76,7 +76,7 @@ class ControlFlowGraph(patterns.Visitable):
                 blocks.append(block)
         return blocks
 
-    def get_block_by_ident(self, ident: str) -> 'BasicBlock':
+    def get_block_by_ident(self, ident: str) -> "BasicBlock":
         """Return the block with the specified identifier, if it exists."""
         for block in self.blocks:
             if block.ident() == ident:
@@ -94,7 +94,7 @@ class ControlFlowGraph(patterns.Visitable):
             for successor in block.succs:
                 successor.preds.append(block)
 
-    def reaches(self, block: 'BasicBlock', dests: t.Iterable['BasicBlock']) -> bool:
+    def reaches(self, block: "BasicBlock", dests: t.Iterable["BasicBlock"]) -> bool:
         """
         Determines if a block can reach any of the given destination blocks
 
@@ -117,8 +117,9 @@ class ControlFlowGraph(patterns.Visitable):
                     queue.append(b)
         return False
 
-    def transitive_closure(self, origin_addresses: t.Iterable[int]) \
-        -> t.Iterable['BasicBlock']:
+    def transitive_closure(
+        self, origin_addresses: t.Iterable[int]
+    ) -> t.Iterable["BasicBlock"]:
         """
         Return a list of blocks reachable from the input addresses.
 
@@ -145,8 +146,9 @@ class ControlFlowGraph(patterns.Visitable):
 
         return reached
 
-    def remove_unreachable_blocks(self, origin_addresses: t.Iterable[int] = [0]) \
-        -> t.Iterable['BasicBlock']:
+    def remove_unreachable_blocks(
+        self, origin_addresses: t.Iterable[int] = [0]
+    ) -> t.Iterable["BasicBlock"]:
         """
         Remove all blocks not reachable from the program entry point.
 
@@ -169,7 +171,7 @@ class ControlFlowGraph(patterns.Visitable):
                 self.remove_block(block)
         return removed
 
-    def edge_list(self) -> t.Iterable[t.Tuple['BasicBlock', 'BasicBlock']]:
+    def edge_list(self) -> t.Iterable[t.Tuple["BasicBlock", "BasicBlock"]]:
         """
         Returns:
           a list of the CFG's edges, with each edge in the form
@@ -177,7 +179,9 @@ class ControlFlowGraph(patterns.Visitable):
         """
         return [(p, s) for p in self.blocks for s in p.succs]
 
-    def sorted_traversal(self, key=lambda b: b.entry, reverse=False) -> t.Generator['BasicBlock', None, None]:
+    def sorted_traversal(
+        self, key=lambda b: b.entry, reverse=False
+    ) -> t.Generator["BasicBlock", None, None]:
         """
         Generator for a sorted shallow copy of BasicBlocks contained in this graph.
 
@@ -195,8 +199,11 @@ class ControlFlowGraph(patterns.Visitable):
         # Create a new list of sorted blocks and yield from it
         yield from sorted(self.blocks, key=key, reverse=reverse)
 
-    def accept(self, visitor: patterns.Visitor,
-               generator: t.Generator['BasicBlock', None, None] = None):
+    def accept(
+        self,
+        visitor: patterns.Visitor,
+        generator: t.Generator["BasicBlock", None, None] = None,
+    ):
         """
         Visitor design pattern: accepts a Visitor instance and visits every node
         in the CFG in an arbitrary order.
@@ -276,12 +283,17 @@ class BasicBlock(patterns.Visitable):
         return self.exit - self.entry
 
     def __str__(self):
-        entry, exit = map(lambda n: hex(n) if n is not None else 'Unknown',
-                          (self.entry, self.exit))
+        entry, exit = map(
+            lambda n: hex(n) if n is not None else "Unknown", (self.entry, self.exit)
+        )
         b_id = self.ident() if self.entry is not None else "Unidentified"
         head = "Block {}\n[{}:{}]".format(b_id, entry, exit)
-        pred = "Predecessors: [{}]".format(", ".join(b.ident() for b in sorted(self.preds)))
-        succ = "Successors: [{}]".format(", ".join(b.ident() for b in sorted(self.succs)))
+        pred = "Predecessors: [{}]".format(
+            ", ".join(b.ident() for b in sorted(self.preds))
+        )
+        succ = "Successors: [{}]".format(
+            ", ".join(b.ident() for b in sorted(self.succs))
+        )
         unresolved = "\nHas unresolved jump." if self.has_unresolved_jump else ""
         return "\n".join([head, self._STR_SEP, pred, succ]) + unresolved
 
@@ -291,8 +303,9 @@ class BasicBlock(patterns.Visitable):
         """
         if self.entry is None or other.entry is None:
             return False
-        return (self.entry < other.entry) or \
-               (self.entry == other.entry and self.ident_suffix < other.ident_suffix)
+        return (self.entry < other.entry) or (
+            self.entry == other.entry and self.ident_suffix < other.ident_suffix
+        )
 
     def ident(self) -> str:
         """

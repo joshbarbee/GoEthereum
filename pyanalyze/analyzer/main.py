@@ -26,74 +26,94 @@ VERSION = """\
 +------------------------------+\
 """
 
+
 def version():
     return VERSION
 
 
 parser = argparse.ArgumentParser(
     description="Rules analyzer for Go Ethereum. Uses intermediate representation"
-                "from modified Vandal implementation to conduct vulnerability analysis."
-                "By default, all analysis are ran. Otherwise, the analysis to run can"
-                "be specified in #TODO")
+    "from modified Vandal implementation to conduct vulnerability analysis."
+    "By default, all analysis are ran. Otherwise, the analysis to run can"
+    "be specified in #TODO"
+)
 
-parser.add_argument("path",
-                nargs="?",
-                type=str,
-                default=sys.stdin,
-                help="path to facts folder consisting of the .fact files to read")
+parser.add_argument(
+    "path",
+    nargs="?",
+    type=str,
+    default=sys.stdin,
+    help="path to facts folder consisting of the .fact files to read",
+)
 
-parser.add_argument("output",
-                nargs="?",
-                type=str,
-                default=sys.stdin,
-                help="path to name of new folder to write output of tx analysis to")    
+parser.add_argument(
+    "output",
+    nargs="?",
+    type=str,
+    default=sys.stdin,
+    help="path to name of new folder to write output of tx analysis to",
+)
 
-parser.add_argument("-a",
-                "--all",
-                action="store_false",
-                help="To run every heuristic on the current .facts file")   
+parser.add_argument(
+    "-a",
+    "--all",
+    action="store_false",
+    help="To run every heuristic on the current .facts file",
+)
 
-parser.add_argument("-re",
-                "--reentrancy",
-                action="store_false",
-                help="To run the reentrancy heuristic on the current .facts file")    
+parser.add_argument(
+    "-re",
+    "--reentrancy",
+    action="store_false",
+    help="To run the reentrancy heuristic on the current .facts file",
+)
 
-parser.add_argument("-uc",
-                "--unchecked-call",
-                action="store_false",
-                help="To run the unchecked-call heuristic on the current .facts file")    
+parser.add_argument(
+    "-uc",
+    "--unchecked-call",
+    action="store_false",
+    help="To run the unchecked-call heuristic on the current .facts file",
+)
 
-parser.add_argument("-su",
-                "--suicidal",
-                action="store_false",
-                help="To run the suicidal contract heuristic on the current .facts file")    
+parser.add_argument(
+    "-su",
+    "--suicidal",
+    action="store_false",
+    help="To run the suicidal contract heuristic on the current .facts file",
+)
 
-parser.add_argument("-ts",
-                "--timestamp",
-                action="store_false",
-                help="To run the timestamp depedency heuristic on the current .facts file")   
+parser.add_argument(
+    "-ts",
+    "--timestamp",
+    action="store_false",
+    help="To run the timestamp depedency heuristic on the current .facts file",
+)
 
-parser.add_argument("-fs",
-                "--failed-send",
-                action="store_false",
-                help="To run the failed-send heuristic on the current .facts file")   
+parser.add_argument(
+    "-fs",
+    "--failed-send",
+    action="store_false",
+    help="To run the failed-send heuristic on the current .facts file",
+)
 
-parser.add_argument("-ub",
-                "--unsecured-balance",
-                action="store_false",
-                help="Whether to run the unsecured balance heuristic on the current .facts file")    
+parser.add_argument(
+    "-ub",
+    "--unsecured-balance",
+    action="store_false",
+    help="Whether to run the unsecured balance heuristic on the current .facts file",
+)
 
 args = parser.parse_args()
 
 log_level = logging.INFO
-logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
+logging.basicConfig(format="%(levelname)s: %(message)s", level=log_level)
 
 if args.path is None or args.output is None:
     sys.exit(1)
 
 try:
     start = time.time()
-        
+
     m = Memory(args.path)
     m.load()
 

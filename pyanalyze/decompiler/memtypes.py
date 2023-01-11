@@ -58,8 +58,12 @@ class Variable(ssle, Location):
     The maximum integer representable by this Variable is then CARDINALITY - 1.
     """
 
-    def __init__(self, values: t.Iterable = None, name: str = VAR_DEFAULT_NAME,
-                 def_sites: ssle = ssle.bottom()):
+    def __init__(
+        self,
+        values: t.Iterable = None,
+        name: str = VAR_DEFAULT_NAME,
+        def_sites: ssle = ssle.bottom(),
+    ):
         """
         Args:
           values: the set of values this variable could take.
@@ -67,7 +71,7 @@ class Variable(ssle, Location):
           def_sites: a set of locations (TACLocRefs) where this variable
                      was possibly defined.
         """
-        
+
         # Make sure the input values are not out of range.
         mod = [] if values is None else [v % self.CARDINALITY for v in values]
         super().__init__(value=mod)
@@ -80,9 +84,11 @@ class Variable(ssle, Location):
         if self.is_bottom:
             return type(self).bottom(self.name, copy.deepcopy(self.def_sites, memodict))
 
-        return type(self)(copy.deepcopy(self.value, memodict),
-                          self.name,
-                          copy.deepcopy(self.def_sites, memodict))
+        return type(self)(
+            copy.deepcopy(self.value, memodict),
+            self.name,
+            copy.deepcopy(self.def_sites, memodict),
+        )
         # Note: type(self) dynamically obtains the Variable class.
         #       Hence, no explicit Variable constructor reference required.
 
@@ -136,9 +142,7 @@ class Variable(ssle, Location):
 
     def __repr__(self):
         return "<{0} object {1}, {2}>".format(
-            self.__class__.__name__,
-            hex(id(self)),
-            self.__str__()
+            self.__class__.__name__, hex(id(self)), self.__str__()
         )
 
     def __eq__(self, other):
@@ -152,7 +156,7 @@ class Variable(ssle, Location):
             return hash(frozenset(self.value)) ^ hash(self.name)
 
     @classmethod
-    def meet(cls, a: 'Variable', b: 'Variable') -> 'Variable':
+    def meet(cls, a: "Variable", b: "Variable") -> "Variable":
         """
         Return a Variable whose values and def sites are the
         intersections of the inputs value and def site sets.
@@ -164,7 +168,7 @@ class Variable(ssle, Location):
         return cls(values=vals, def_sites=sites)
 
     @classmethod
-    def join(cls, a: 'Variable', b: 'Variable') -> 'Variable':
+    def join(cls, a: "Variable", b: "Variable") -> "Variable":
         """
         Return a Variable whose values and def sites are the
         unions of the inputs value and def site sets.
@@ -176,7 +180,7 @@ class Variable(ssle, Location):
         return cls(values=vals, def_sites=sites)
 
     @classmethod
-    def top(cls, name=VAR_DEFAULT_NAME, def_sites: ssle = ssle.bottom()) -> 'Variable':
+    def top(cls, name=VAR_DEFAULT_NAME, def_sites: ssle = ssle.bottom()) -> "Variable":
         """
         Return a Variable with Top value, and optionally set its name.
 
@@ -189,7 +193,9 @@ class Variable(ssle, Location):
         return result
 
     @classmethod
-    def bottom(cls, name=VAR_DEFAULT_NAME, def_sites: ssle = ssle.bottom()) -> 'Variable':
+    def bottom(
+        cls, name=VAR_DEFAULT_NAME, def_sites: ssle = ssle.bottom()
+    ) -> "Variable":
         """
         Return a Variable with Bottom value, and optionally set its name.
 
@@ -206,12 +212,11 @@ class Variable(ssle, Location):
             return None
         return next(iter(self))
 
-    def complement(self) -> 'Variable':
+    def complement(self) -> "Variable":
         """
         Return the signed two's complement interpretation of this constant's values.
         """
-        return type(self)(values=self.value.map(self.twos_comp),
-                          name=VAR_RESULT_NAME)
+        return type(self)(values=self.value.map(self.twos_comp), name=VAR_RESULT_NAME)
 
     @classmethod
     def twos_comp(cls, v: int) -> int:
@@ -226,8 +231,9 @@ class Variable(ssle, Location):
     # Op function names should be identical to the opcode names themselves.
 
     @classmethod
-    def arith_op(cls, opname: str, args: t.Iterable['Variable'],
-                 name=VAR_RESULT_NAME) -> 'Variable':
+    def arith_op(
+        cls, opname: str, args: t.Iterable["Variable"], name=VAR_RESULT_NAME
+    ) -> "Variable":
         """
         Apply the named arithmetic operation to the given Variables' values
         in all permutations, and return a Variable containing the result.
@@ -293,7 +299,7 @@ class Variable(ssle, Location):
     @classmethod
     def EXP(cls, b: int, e: int) -> int:
         """Exponentiation: return b to the power of e."""
-        return b ** e
+        return b**e
 
     @classmethod
     def SIGNEXTEND(cls, b: int, v: int) -> int:
@@ -377,6 +383,7 @@ class Variable(ssle, Location):
         """Arithmetic shift right."""
         return cls.twos_comp(v) >> b
 
+
 class MetaVariable(Variable):
     """A Variable to stand in for Variables."""
 
@@ -401,9 +408,9 @@ class MetaVariable(Variable):
         return self.identifier
 
     def __deepcopy__(self, memodict={}):
-        return type(self)(self.name,
-                          self.payload,
-                          copy.deepcopy(self.def_sites, memodict))
+        return type(self)(
+            self.name, self.payload, copy.deepcopy(self.def_sites, memodict)
+        )
 
 
 class VariableStack(LatticeElement):
@@ -430,8 +437,13 @@ class VariableStack(LatticeElement):
     DEFAULT_MIN_MAX_SIZE = 20
     """The minimum maximum size of a variable stack."""
 
-    def __init__(self, state: t.Iterable[Variable] = None,
-                 max_size=DEFAULT_MAX, min_max_size=DEFAULT_MIN_MAX_SIZE, depth : int = None):
+    def __init__(
+        self,
+        state: t.Iterable[Variable] = None,
+        max_size=DEFAULT_MAX,
+        min_max_size=DEFAULT_MIN_MAX_SIZE,
+        depth: int = None,
+    ):
         super().__init__([] if state is None else list(state))
 
         self.empty_pops = 0
@@ -464,11 +476,11 @@ class VariableStack(LatticeElement):
         return len(self.value)
 
     def __eq__(self, other):
-        return len(self) == len(other) and \
-               all(v1 == v2 for v1, v2 in
-                   zip(reversed(self.value), reversed(other.value)))
+        return len(self) == len(other) and all(
+            v1 == v2 for v1, v2 in zip(reversed(self.value), reversed(other.value))
+        )
 
-    def copy(self) -> 'VariableStack':
+    def copy(self) -> "VariableStack":
         """
         Produce a copy of this stack, without deep copying
         the variables it contains.
@@ -552,33 +564,36 @@ class VariableStack(LatticeElement):
         self.value = self.value[-new_size:]
 
     @classmethod
-    def meet(cls, a: 'VariableStack', b: 'VariableStack') -> 'VariableStack':
+    def meet(cls, a: "VariableStack", b: "VariableStack") -> "VariableStack":
         """
         Return the meet of the given stacks, taking the element-wise meets of their
         contained Variables from the top down.
         """
 
-        pairs = zip_longest(reversed(a.value), reversed(b.value),
-                            fillvalue=Variable.bottom())
+        pairs = zip_longest(
+            reversed(a.value), reversed(b.value), fillvalue=Variable.bottom()
+        )
         max_size = a.max_size if a.max_size < b.max_size else b.max_size
-        return cls(dropwhile(lambda x: x.is_bottom,
-                             [Variable.meet(*p) for p in pairs][::-1]),
-                   max_size)
+        return cls(
+            dropwhile(lambda x: x.is_bottom, [Variable.meet(*p) for p in pairs][::-1]),
+            max_size,
+        )
 
     @classmethod
-    def join(cls, a: 'VariableStack', b: 'VariableStack') -> 'VariableStack':
+    def join(cls, a: "VariableStack", b: "VariableStack") -> "VariableStack":
         """
         Return the join of the given stacks, taking the element-wise joins of their
         contained Variables from the top down.
         """
 
-        pairs = zip_longest(reversed(a.value), reversed(b.value),
-                            fillvalue=Variable.bottom())
+        pairs = zip_longest(
+            reversed(a.value), reversed(b.value), fillvalue=Variable.bottom()
+        )
         max_size = a.max_size if a.max_size > b.max_size else b.max_size
         return cls([Variable.join(*p) for p in pairs][::-1], max_size)
 
     @classmethod
-    def join_all(cls, elements: t.Iterable['VariableStack']) -> 'VariableStack':
+    def join_all(cls, elements: t.Iterable["VariableStack"]) -> "VariableStack":
         """
         Return the common meet of the given sequence; an empty sequence
         yields an empty stack.

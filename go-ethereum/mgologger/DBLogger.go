@@ -43,7 +43,7 @@ var (
 	transferTrace *bytes.Buffer
 
 	TraceIndex int
-	CallStack  [1024]uint
+	CallStack  [1025]uint
 
 	OpTraceFormat       = "pc, depth, opcode,gas, cost, output"
 	FuncTraceFormat     = "index, calltype, depth, fromStr, toStr, valueStr, gas, inputStr, outputStr"

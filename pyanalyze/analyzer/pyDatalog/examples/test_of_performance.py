@@ -31,39 +31,44 @@ Note : it is significantly slower when run in debug mode (instead of from the co
 import time
 
 from pyDatalog import pyDatalog
+
+
 def test1():
 
-    """ Large database + deep recursion """
+    """Large database + deep recursion"""
     pyDatalog.clear()
     for i in range(10000):
-        pyDatalog.assert_fact('successor', i+1, i+0)
-        
-    @pyDatalog.program()
-    def _(): # the function name is ignored
-        assert ask(successor(1801,1800)) == set([()])
+        pyDatalog.assert_fact("successor", i + 1, i + 0)
 
-        + even(0)
-        even(N) <= (N > 0) & successor(N,N1) & odd(N1)
-        odd(N) <= (N > 0) & successor(N,N2) & even(N2)
-        
-        assert ask(odd(299)) == set([()]) 
+    @pyDatalog.program()
+    def _():  # the function name is ignored
+        assert ask(successor(1801, 1800)) == set([()])
+
+        +even(0)
+        even(N) <= (N > 0) & successor(N, N1) & odd(N1)
+        odd(N) <= (N > 0) & successor(N, N2) & even(N2)
+
+        assert ask(odd(299)) == set([()])
         assert ask(odd(9999)) == set([()])
-        
+
         # TODO why is this much much slower ??
         # odd(N) <= even(N1) & successor(N, N1)
 
-def test2():
-    """ Deep recursion """
-    pyDatalog.clear()
-    @pyDatalog.program()
-    def _(): # the function name is ignored
 
-        + even(0)
-        even(N) <= (N > 0) & odd(N-1)
+def test2():
+    """Deep recursion"""
+    pyDatalog.clear()
+
+    @pyDatalog.program()
+    def _():  # the function name is ignored
+
+        +even(0)
+        even(N) <= (N > 0) & odd(N - 1)
         assert ask(even(0)) == set([()])
-        odd(N) <= (N > 0) & even(N-1)
+        odd(N) <= (N > 0) & even(N - 1)
 
         assert ask(odd(9999)) == set([()])
+
 
 if __name__ == "__main__":
     start_time = time.time()
@@ -73,4 +78,3 @@ if __name__ == "__main__":
     for i in range(10):
         test2()
     print("%i seconds in total" % int(time.time() - start_time))
-    

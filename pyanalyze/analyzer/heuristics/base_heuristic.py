@@ -2,6 +2,7 @@ import io
 import pandas as pd
 from pathlib import Path
 
+
 class BaseHeuristic:
     def __init__(self, path) -> None:
         self.path = path
@@ -10,7 +11,7 @@ class BaseHeuristic:
     def output(self) -> None:
         if isinstance(self.path, io.TextIOWrapper):
             variables = vars(self)
-            for k,v in variables.items():
+            for k, v in variables.items():
                 if type(v) == pd.DataFrame:
                     print(f"{k}:\n{v}")
 
@@ -18,8 +19,7 @@ class BaseHeuristic:
             Path(self.path).mkdir(parents=False, exist_ok=True)
 
             title = type(self).__name__
-            
-            self.result.to_csv(f"{self.path}/{title}.csv", sep='\t', na_rep="", index=False)
 
-
-
+            self.result.to_csv(
+                f"{self.path}/{title}.csv", sep="\t", na_rep="", index=False
+            )

@@ -178,10 +178,7 @@ class StdIOHandler:
         :param message: to display
         :return:nothing
         """  # noqa: E501
-        message = (
-            "## Error\n{text}\n"
-            "Press enter to continue\n"
-        )
+        message = "## Error\n{text}\n" "Press enter to continue\n"
         text = req.get("text")
         sys.stdout.write(message.format(text=text))
         input()
@@ -197,10 +194,7 @@ class StdIOHandler:
         :param message: to display
         :return:nothing
         """  # noqa: E501
-        message = (
-            "## Info\n{text}\n"
-            "Press enter to continue\n"
-        )
+        message = "## Info\n{text}\n" "Press enter to continue\n"
         text = req.get("text")
         sys.stdout.write(message.format(text=text))
         input()
@@ -250,10 +244,7 @@ class StdIOHandler:
         accounts = req.get("accounts", [])
         addrs = [x.get("address") for x in accounts]
         sys.stdout.write(
-            message.format(
-                addrs="\n\t-".join(addrs),
-                meta_string=metaString(meta)
-            )
+            message.format(addrs="\n\t-".join(addrs), meta_string=metaString(meta))
         )
         return {}
 
@@ -267,18 +258,9 @@ class StdIOHandler:
         :param message: to display
         :return:nothing
         """  # noqa: E501
-        message = (
-            "\n"
-            "## {title}\n"
-            "\t{prompt}\n"
-            "\n"
-            "> "
-        )
+        message = "\n" "## {title}\n" "\t{prompt}\n" "\n" "> "
         sys.stdout.write(
-            message.format(
-                title=req.get("title"),
-                prompt=req.get("prompt")
-            )
+            message.format(title=req.get("title"), prompt=req.get("prompt"))
         )
         isPassword = req.get("isPassword")
         if not isPassword:

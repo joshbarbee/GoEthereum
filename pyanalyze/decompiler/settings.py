@@ -162,9 +162,20 @@ _names_ = [s for s in dir(_module_) if not (s.startswith("_"))]
 
 # Set up the types of the various settings, so they can be converted
 # correctly when being read from config.
-_types_ = {n: ("int" if n in ["max_iterations", "bailout_seconds",
-                              "clamp_stack_minimum", "widen_threshold"]
-else "bool") for n in _names_}
+_types_ = {
+    n: (
+        "int"
+        if n
+        in [
+            "max_iterations",
+            "bailout_seconds",
+            "clamp_stack_minimum",
+            "widen_threshold",
+        ]
+        else "bool"
+    )
+    for n in _names_
+}
 
 # A stack for saving and restoring setting configurations.
 _stack_ = []
@@ -224,8 +235,11 @@ def set_from_string(setting_name: str, value: str):
         elif val in {"0", "no", "false", "off"}:
             _get_dict_()[name] = False
         else:
-            logging.error('Cannot interpret value "%s" as boolean for setting "%s"',
-                          value, setting_name)
+            logging.error(
+                'Cannot interpret value "%s" as boolean for setting "%s"',
+                value,
+                setting_name,
+            )
             sys.exit(1)
     else:
         logging.error('Unknown type "%s" for setting "%s".', setting_name)
@@ -238,6 +252,7 @@ def import_config(filepath: str = _CONFIG_LOC_):
     This should be called before running the decompiler.
     """
     import configparser
+
     config = configparser.ConfigParser()
     with open(_DEFAULT_LOC_) as default:
         config.read_file(default)

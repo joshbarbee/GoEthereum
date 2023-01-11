@@ -38,7 +38,7 @@ class Visitable(abc.ABC):
     Provides an interface for an object which can accept a :obj:`Visitor`.
     """
 
-    def accept(self, visitor: 'Visitor'):
+    def accept(self, visitor: "Visitor"):
         """
         Accepts a :obj:`Visitor` and calls :obj:`Visitor.visit`
 
@@ -173,5 +173,8 @@ class DynamicVisitor(Visitor):
         Raises:
           TypeError
         """
-        raise TypeError("could not find a visit method for target type {}"
-                        .format(type(target).__name__))
+        raise TypeError(
+            "could not find a visit method for target type {}".format(
+                type(target).__name__
+            )
+        )

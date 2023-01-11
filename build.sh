@@ -11,7 +11,7 @@
 # but can configure via mongo.url, mongo.collection, ... options on Geth
 
 # start consensus client 
-sudo ./consensus/prysm.sh beacon-chain --execution-endpoint=/home/josh/GoEthereum/data/geth.ipc --accept-terms-of-use --checkpoint-sync-url https://beaconstate.info &
+sudo ./consensus/prysm.sh beacon-chain --execution-endpoint=/home/josh/Research/GoEthereum/data/geth.ipc --accept-terms-of-use --checkpoint-sync-url https://beaconstate.info --datadir data &
 
 # start rpc server with config
 sudo ./go-ethereum/build/bin/geth --syncmode full --datadir data --http --http.api eth,net,engine,admin 

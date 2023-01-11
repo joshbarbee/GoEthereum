@@ -61,8 +61,8 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
 
     def __generate(self, filename, entries):
         path = os.path.join(self.__output_dir, filename)
-        with open(path, 'w') as f:
-            writer = csv.writer(f, delimiter='\t', lineterminator='\n')
+        with open(path, "w") as f:
+            writer = csv.writer(f, delimiter="\t", lineterminator="\n")
             for e in entries:
                 writer.writerow(e)
 
@@ -73,16 +73,27 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
         ops = []
         op_rels = {opcode: list() for opcode in out_opcodes}
 
-        for block in self.source.blocks:   
+        for block in self.source.blocks:
             for op in block.tac_ops:
                 ops.append((hex(op.pc), op.opcode.name, op.op_index))
                 if op.opcode.name in out_opcodes:
                     if op.has_lhs:
-                        output_tuple = tuple([hex(op.pc)] +
-                                            [arg.value.name for arg in op.args] + [op.lhs.name] + [op.op_index] + [op.depth] + [op.call_index])
+                        output_tuple = tuple(
+                            [hex(op.pc)]
+                            + [arg.value.name for arg in op.args]
+                            + [op.lhs.name]
+                            + [op.op_index]
+                            + [op.depth]
+                            + [op.call_index]
+                        )
                     else:
-                        output_tuple = tuple([hex(op.pc)] +
-                                            [arg.value.name for arg in op.args] + [op.op_index] + [op.depth] + [op.call_index])
+                        output_tuple = tuple(
+                            [hex(op.pc)]
+                            + [arg.value.name for arg in op.args]
+                            + [op.op_index]
+                            + [op.depth]
+                            + [op.call_index]
+                        )
                     op_rels[op.opcode.name].append(output_tuple)
 
         self.__generate("op.facts", ops)
@@ -101,7 +112,9 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
             for op in block.tac_ops:
                 # If it's an assignment op, we have a def site
                 if isinstance(op, tac_cfg.TACAssignOp):
-                    define.append((op.lhs.name, hex(op.pc), op.op_index, op.depth, op.call_index))
+                    define.append(
+                        (op.lhs.name, hex(op.pc), op.op_index, op.depth, op.call_index)
+                    )
 
                     # And we can also find its values here.
                     if op.lhs.values.is_finite:
@@ -112,9 +125,18 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
                     # The args constitute use sites.
                     for i, arg in enumerate(op.args):
                         name = arg.value.name
-                        
+
                         # relation format: use(Var, PC, ArgIndex)
-                        use.append((name, hex(op.pc), i+1, op.op_index, op.depth, op.call_index))
+                        use.append(
+                            (
+                                name,
+                                hex(op.pc),
+                                i + 1,
+                                op.op_index,
+                                op.depth,
+                                op.call_index,
+                            )
+                        )
 
             # Finally, note where each stack variable might have been defined,
             # and what values it can take on.
@@ -124,7 +146,9 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
                 if not var.def_sites.is_const and var.def_sites.is_finite:
                     name = block.ident() + ":" + var.name
                     for loc in var.def_sites:
-                        define.append((name, hex(loc.pc), op.op_index, op.depth, op.call_index))
+                        define.append(
+                            (name, hex(loc.pc), op.op_index, op.depth, op.call_index)
+                        )
 
                     if var.values.is_finite:
                         for val in var.values:
@@ -134,19 +158,20 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
         self.__generate("use.facts", use)
         self.__generate("value.facts", value)
 
-    def __generate_sc_addr(self): 
+    def __generate_sc_addr(self):
         path = os.path.join(self.__output_dir, "sc_addr.facts")
 
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             f.write(self.source.sc_addr.lower())
 
-    '''
+    """
         Generates a simplified .facts file where all information is contained into only 
         one file. The ordering of the data is as such:
         location, pc, opcode, call_depth_, call_index, value, def, # use, use vars...
         
         The # of values should match the number of # of defined variables
-    '''
+    """
+
     def __generate_simple(self):
         lines = []
 
@@ -155,25 +180,36 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
                 # update addresses for the previous call number that is being returned from
                 if op.opcode.is_call():
                     for idx, line in enumerate(lines[op.call_index]):
-                        lines[op.call_index][idx] = [hex(next(iter(op.args[1].value.value)))] + line # 2nd argument is address to call
+                        lines[op.call_index][idx] = [
+                            hex(next(iter(op.args[1].value.value)))
+                        ] + line  # 2nd argument is address to call
                 define = ()
                 if isinstance(op, tac_cfg.TACAssignOp):
                     vals = ()
                     if op.lhs.values.is_finite:
                         for val in op.lhs.values:
                             vals = vals + (val,)
-        
-                    define = vals + (op.lhs.name, ) 
+
+                    define = vals + (op.lhs.name,)
                 else:
-                    define = ("","") # filler data for tsv
+                    define = ("", "")  # filler data for tsv
                 uses = ()
 
                 if op.opcode != opcodes.CONST:
                     for i, arg in enumerate(op.args):
-                        uses = uses + (arg.value.name, )
+                        uses = uses + (arg.value.name,)
 
-                line = [op.op_index, hex(op.pc), op.opcode.name, op.depth, op.call_index, *define, len(uses), *uses]
-            
+                line = [
+                    op.op_index,
+                    hex(op.pc),
+                    op.opcode.name,
+                    op.depth,
+                    op.call_index,
+                    *define,
+                    len(uses),
+                    *uses,
+                ]
+
                 if len(lines) >= op.call_index:
                     lines.append([])
 
@@ -181,7 +217,7 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
 
         lines = [l for l in line for l in lines]
 
-        self.__generate("opAll.facts", lines)        
+        self.__generate("opAll.facts", lines)
 
     def export(self, output_dir: str = "", out_opcodes=[]):
         """
@@ -199,6 +235,7 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
         self.__generate_sc_addr()
         self.__generate_def_use_value()
         self.__generate_simple()
+
 
 class CFGStringExporter(Exporter, patterns.DynamicVisitor):
     """

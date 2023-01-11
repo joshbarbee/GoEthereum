@@ -38,19 +38,24 @@ from pyDatalog import pyDatalog
 
 pyEngine.Auto_print = True
 
+
 class datalogConsole(code.InteractiveConsole):
-    def runsource(self, source, filename='console', symbol='single'):
-        pySource = """
+    def runsource(self, source, filename="console", symbol="single"):
+        pySource = (
+            """
 pyDatalog.load('''
 %s
 ''')
-""" % source
+"""
+            % source
+        )
         try:
             code.InteractiveConsole.runsource(self, pySource, filename, symbol)
         except Exception as e:
             print(e)
 
-sys.ps1 = 'pyDatalog> '
+
+sys.ps1 = "pyDatalog> "
 if __name__ == "__main__":
     console = datalogConsole(locals=locals())
-    console.interact('')
+    console.interact("")

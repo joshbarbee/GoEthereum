@@ -201,10 +201,4 @@ api = api.API(cfg)
 sload = api.get_ops(opcodes.SLOAD, min_ci=2)
 jumpi = api.get_ops_by_ops(opcodes.JUMPI, sload, {"call_index", "depth"})
 
-# reduce to sload that has a JUMPI dependency
-sload = api.reduce_use(sload, jumpi, op2_vi=1)
-
-# get sstore, with call depth less than sload call depth
-sstore = api.get_ops(opcodes.SSTORE, min_ci=2)
-
-# value of sstore addr var value should be same as sload
+api.reduce_use(sload, jumpi, op2_vi=1)

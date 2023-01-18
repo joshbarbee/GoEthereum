@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "0xfff9099e2f3c62d8f919e279706c5c1acf1b9f332171c7e28caef1681d905fc8",
+                "0x37085f336b5d3e588e37674544678f8cb0fc092a6de5d83bd647e20e5232897b",
                 "-o",
                 "--opcodes CREATE BALANE CALLER CALLVALUE STOP RETURN REVERT ORIGIN CALLDATALOAD EQ TIMESTAMP NUMBER DIFFICULTY COINBASE BLOCKHASH GASLMIT EXTCODESIZE SELFDESTRUCT JUMPI JUMP JUMPDEST SSTORE SLOAD CALL DELEGATE CALLCODE STATICCALL"
             ]

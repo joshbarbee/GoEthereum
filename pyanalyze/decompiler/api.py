@@ -72,6 +72,8 @@ class Op:
                 and self.opcode == __o.opcode
             ):
                 return True
+            else:
+                return False
         elif isinstance(__o, Dict):
             dict_repr = {
                 "pc": self.pc,
@@ -147,9 +149,6 @@ class API:
 
         self.__load_graph__()
 
-        nx.draw(self.graphs[4])
-        plt.show()
-
     def __load_graph__(self):
         self.addresses.append(self.source.sc_addr.lower())
 
@@ -206,6 +205,10 @@ class API:
                         self.graphs[op.call_index].add_edge(
                             use_var, new_op, data=new_op
                         )
+                else:
+                    self.graphs[op.call_index].add_node(new_op)
+                    for use_var in used_vars:
+                        self.graphs[op.call_index].add_edge(use_var, new_op, data=new_op)
 
     def get_ops(
         self, opcode: opcodes.OpCode, min_ci: int = 0, min_depth: int = 0
@@ -272,7 +275,7 @@ class API:
         res = {}
 
         if len(props) == 0:
-            return {op1: ops2 for op1 in ops2}
+            return {op1: ops2 for op1 in ops1}
 
         for op1 in ops1:
             res[op1] = []
@@ -283,6 +286,27 @@ class API:
                     res[op1].append(op2)
 
         return res
+
+    def filter_props(self, ops : List[Op], props: Dict[str, int | str]) -> List[Op]:
+        """Filters a list of ops based on particular properties. props is a dict
+        between Op properties (call_index, depth, pc, etc.) and discrete values. 
+        For example: props={"call_index":2, "depth":3}
+
+        Args:
+            ops (List[Op]): List of ops to filter based on property values
+            props (Dict[str, int  |  str]): Dict of properties to filter by
+
+        Returns:
+            List[Op]: Filtered list of ops
+        """        
+        res = []
+        
+        for op in ops:
+            if op == props:
+                res.append(op)
+
+        return res
+
 
     def reduce_props(self, ops1: List[Op], ops2: List[Op], props: set[str]) -> List[Op]:
         """Reduces the list ops1 by the list ops2 where properties of the Op variables in ops1 does not
@@ -339,7 +363,7 @@ class API:
         ops2: List[Op],
         ops1_def: bool = True,
         ops2_def: bool = True,
-        props: set[str] = {},
+        props : set[str] = {}
     ) -> List[Op]:
         """Reduces ops1 by the relation between values defined or used in ops1 and ops2.
 
@@ -378,15 +402,14 @@ class API:
 
             found = False
             for linked_op in linked_ops:
-                if found:
-                    break
+                if found: break
 
                 if ops2_def is True and linked_op.def_var.value() in vals:
                     res.append(op)
                     found = True
                 elif ops2_def is False:
                     for use_var in op.used_vars:
-                        if use_var.value() in vals:
+                       if use_var.value() in vals:
                             res.append(op)
                             found = True
 
@@ -432,10 +455,9 @@ class API:
                     for var in op2.used_vars:
                         if (
                             self.graphs[op.call_index].has_node(var)
-                            and nx.node_connectivity(
-                                self.graphs[op.call_index], s=op.def_var, t=var
+                            and nx.has_path(
+                                self.graphs[op.call_index], op.def_var, var
                             )
-                            > 0
                         ):
                             res.append(op) if not reverse else res.append(var)
                 else:
@@ -475,7 +497,7 @@ class API:
 
         return res
 
-    def reduce_origins(self, ops1: List[Op], ops2: List[Op]) -> List[Op]:
+    def reduce_origins(self, ops1: List[Op], ops2 : List[Op]) -> List[Op]:
         res = []
 
         addrs = {self.addresses[op.call_index] for op in ops2}
@@ -486,9 +508,7 @@ class API:
 
         return res
 
-    def reduce_dominators(
-        self, ops1: List[Op], ops2: List[Op], props: set[str] = {}
-    ) -> List[Op]:
+    def reduce_dominators(self, ops1: List[Op], ops2: List[Op], props : set[str] = {}) -> List[Op]:
         def is_total_dominator(opList, matchOp, callIndex):
             if len(opList) == 0:
                 return False
@@ -515,3 +535,23 @@ class API:
                     break
 
         return res
+
+    def reduce_reaches(self, ops1 : List[Op], ops2 : List[Op], props : set[str] = {}) -> List[Op]:
+        possible_links = self.__create_potential_matches(ops1, ops2, props)
+
+        res = []
+
+        for op, links in possible_links.items():
+            if op.def_var is None:
+                continue
+
+            isFound = False
+            for link in links:
+                if isFound: break
+
+                for use_var in link.used_vars:
+                    if nx.has_path(self.graphs[op.call_index], op.def_var, use_var):
+                        res.append(op)
+                        isFound = True
+
+

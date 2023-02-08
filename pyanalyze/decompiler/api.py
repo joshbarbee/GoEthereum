@@ -1,7 +1,4 @@
-import decompiler.cfg as cfg
 import decompiler.opcodes as opcodes
-import decompiler.patterns as patterns
-
 import decompiler.tac_cfg as tac_cfg
 import decompiler.opcodes as opcodes
 
@@ -10,116 +7,93 @@ from typing import List, Dict
 import networkx as nx
 import matplotlib.pyplot as plt
 
+import pandas as pd
+import numpy as np
 
-class Variable:
-    def __init__(
-        self,
-        var_name: str,
-        pc: int,
-        depth: int,
-        call_index: int,
-        op: opcodes.OpCode,
-        values: List[int],
-    ) -> None:
-        self.var_name = var_name
-        self.pc = pc
-        self.depth = depth
-        self.call_index = call_index
-        self.op = op
-        self.values = values
+DF_COLS = {
+    "loc": int(),
+    "pc": int(),
+    "op": str(),
+    "depth": int(),
+    "callindex": int(),
+    "value": int(),
+    "defvar": int(),
+    "usevars": list(),
+}
 
-    def __hash__(self) -> int:
-        return hash(self.var_name)
+class Variable():
+    def __init__(self, symbol : str, value : int, preds : List['Variable'] = []) -> None:
+        self.symbol = symbol
+        self.value = value
+        self.succ = []
+        self.preds = preds
 
-    def __repr__(self) -> str:
-        return self.var_name
+    def is_parent(self, parent_vars : List['Variable'] | 'Variable') -> bool:
+        """Return true if any Variable instance in parent_vars is a parent
+        of the Variable instance. Uses BFS for searching
 
-    def value(self) -> int:
-        res = ""
+        Args:
+            parent_vars (List[Variable;] | Variable): A List of variables or a
+            single variable that should be a parent of `self`.
 
-        for i in self.values:
-            res += str(i).zfill(64)  # fill to 32 bytes
+        Returns:
+            bool: whether any of the Variables in parent_vars are a parent of 
+            `self`
+        """      
 
-        return int(res)
+        if not isinstance(parent_vars, list):
+            parent_vars = [parent_vars]
 
-
-class Op:
-    def __init__(
-        self,
-        opcode: opcodes.OpCode,
-        pc: int,
-        call_index: int,
-        depth: int,
-        def_var: Variable = None,
-        used_vars: List[Variable] = [],
-    ) -> None:
-        self.pc = pc
-        self.depth = depth
-        self.call_index = call_index
-        self.used_vars = used_vars
-        self.def_var = def_var
-        self.opcode = opcode
-
-    def __hash__(self) -> int:
-        return hash((self.opcode, self.pc, self.call_index, self.depth))
-
-    def __eq__(self, __o: object) -> bool:
-        if isinstance(__o, Op):
-            if (
-                self.pc == __o.pc
-                and self.depth == __o.depth
-                and self.call_index == __o.call_index
-                and self.opcode == __o.opcode
-            ):
+        queue = [self]
+        visited = set()
+        while queue:
+            node = queue.pop(0)
+            if node in visited:
+                continue
+            visited.add(node)
+            if node in parent_vars:
                 return True
-            else:
-                return False
-        elif isinstance(__o, Dict):
-            dict_repr = {
-                "pc": self.pc,
-                "depth": self.depth,
-                "call_index": self.call_index,
-                "opcode": self.opcode,
-                "depth": self.depth,
-            }
+            queue.extend(node.preds)
 
-            intersect_keys = dict_repr.keys() & __o.keys()
+        return False
+        
+    def is_child(self, child_vars : List['Variable'] | 'Variable') -> bool:
+        """Return true if any Variable instance in child_vars is a child
+        of the Variable instance. Uses BFS for searching
 
-            if len(intersect_keys) == 0:
-                return False
+        Args:
+            child_vars (List[Variable;] | Variable): A List of variables or a
+            single variable that should be a child of `self`.
 
-            for key in intersect_keys:
-                if dict_repr[key] != __o[key]:
-                    return False
+        Returns:
+            bool: whether any of the Variables in child_vars are a child of 
+            `self`
+        """ 
+        if not isinstance(child_vars, list):
+            child_vars = [child_vars]
 
-            return True
+        queue = [self]
+        visited = set()
+        while queue:
+            node = queue.pop(0)
+            if node in visited:
+                continue
+            visited.add(node)
+            if node in child_vars:
+                return True
+            queue.extend(node.succ)
 
-        raise NotImplemented
+        return False
 
-    def to_dict(self) -> Dict[str, int | str]:
-        return {
-            "pc": self.pc,
-            "depth": self.depth,
-            "call_index": self.call_index,
-            "opcode": self.opcode,
-            "depth": self.depth,
-        }
+    def get_descendants(self) -> List['Variable']:
+        """Returns all children and any descendants 
+        of self's children as a list
 
-    def get_props(self, s: set[str]) -> Dict[str, int | str]:
-        try:
-            return {i: getattr(self, i) for i in s}
-        except AttributeError as e:
-            raise e
+        Returns:
+            List['Variable]: all Variable descendants of self
+        """        
 
-    def __repr__(self) -> str:
-        return {
-            "opcode": self.opcode,
-            "pc": self.pc,
-            "call_index": self.call_index,
-            "depth": self.depth,
-        }
-
-
+        return self.succ + [i for var in self.succ for i in var.get_descendants()]
 class API:
     def __init__(self, source: tac_cfg.TACGraph) -> None:
         """Representation of Vandal Datalog instructions
@@ -131,29 +105,33 @@ class API:
 
         self.source = source
 
-        # allows selecting operators by opcode
-        self.op_map = {}
-
-        # allows selecting variables by variable name (V1, V2, V1337, etc.)
-        self.var_map = {}
+        # allows selecting operator dataframes by opcode
+        self.ops: Dict[str, pd.DataFrame] = {}
 
         # graph representation of variables used through execution, with a graph
         # maintained for each call
         self.graphs: List[nx.DiGraph] = []
 
         # each call number is a different address, n-th index is call # n
-        self.addresses = []
+        self.addresses : List[str] = []
 
-        # maps Variable object to the immediate dominators of the variable
-        self.dominators = {}
+        # associates variables with discrete values
+        self.variables : Dict[str, Variable] = {}   
 
-        self.__load_graph__()
+        self.__load__()
 
-    def __load_graph__(self):
+    def __load__(self):
         self.addresses.append(self.source.sc_addr.lower())
+
+        # load ops into dict first for faster conversion w/ pandas
+        ops = {}
 
         for block in self.source.blocks:
             for op in block.tac_ops:
+                # create dataframe for opcode if dataframe does not exist
+                if op.opcode.name not in ops:
+                    ops[op.opcode.name] = []
+
                 # initialize graph for cn if not present
                 while len(self.graphs) - 1 < op.call_index:
                     self.graphs.append(nx.DiGraph())
@@ -166,392 +144,388 @@ class API:
 
                 # determine any variables used in calculating opcode
                 if op.opcode != opcodes.CONST:
-                    used_vars = [self.var_map[arg.value.name] for arg in op.args]
+                    used_vars = [arg.value.name for arg in op.args]
                 else:
                     used_vars = []
 
-                # determine any newly defined variablesfrom opcode
+                # determine any newly defined variables from opcode
                 if isinstance(op, tac_cfg.TACAssignOp):
-                    if op.lhs.values.is_finite:
-                        vals = [val for val in op.lhs.values]
+                    def_var = op.lhs.name
 
-                    new_var = Variable(
-                        op.lhs.name,
+                    if op.lhs.values.is_finite:
+                        # iterate through backwards to preserve bigendian-ness
+                        value = int(str(op.lhs.values.const_value))
+                else:
+                    def_var = None
+                    value = None
+
+                ops[op.opcode.name].append(
+                    [
+                        op.op_index,
                         op.pc,
+                        op.opcode.name,
                         op.depth,
                         op.call_index,
-                        op.opcode.name,
-                        vals,
-                    )
-                    self.var_map[op.lhs.name] = new_var
-                else:
-                    new_var = None
-
-                # create new Op, add to mapping of all opcodes
-                new_op = Op(
-                    op.opcode, op.pc, op.call_index, op.depth, new_var, used_vars
+                        value,
+                        def_var,
+                        used_vars,
+                    ]
                 )
-
-                if op.opcode.name not in self.op_map:
-                    self.op_map[op.opcode.name] = [new_op]
-                else:
-                    self.op_map[op.opcode.name].append(new_op)
 
                 # add edges between def and use Vars in NetworkX, with the edges being
                 # the opcodes, and the nodes being Variables
-                if new_var:
-                    self.graphs[op.call_index].add_node(new_var)
-                    for use_var in used_vars:
-                        self.graphs[op.call_index].add_edge(
-                            use_var, new_op, data=new_op
-                        )
-                else:
-                    self.graphs[op.call_index].add_node(new_op)
-                    for use_var in used_vars:
-                        self.graphs[op.call_index].add_edge(use_var, new_op, data=new_op)
+                if def_var is not None:
+                    used_vars = [self.variables.get(var) for var in used_vars]
 
-    def get_ops(
-        self, opcode: opcodes.OpCode, min_ci: int = 0, min_depth: int = 0
-    ) -> List[Op]:
-        """Gets all opcodes matching a particular Opcode instance
+                    self.variables[def_var] = Variable(def_var, value, used_vars)
+
+                    for var in used_vars:
+                        var.succ.append(self.variables[def_var])
+
+        # load each op into separate dataframe
+        for k in ops.keys():
+            self.ops[k] = pd.DataFrame(ops[k], columns=DF_COLS)
+
+    def get_ops(self, opcode: str, **kwargs: Dict[str, tuple[str, str]]) -> pd.DataFrame:
+        """get_ops returns a copy of a dataframe of a particular opcode. **kwargs
+        keys are columns of the opcode dataframe, as those listed in DF_COLS. The
+        values should be 2-tuples of the comparator (<,>,==,!=,...) as a string
+        and the discrete value to compare to.
+
+        This will always copy from the original dataframe
+
+        Examples::
+
+            get_ops('JUMPI', callindex=('<', 2))
+            get_ops('CONST', depth=('!=', 3), value=('==', 2))
 
         Args:
-            opcode (opcodes.OpCode): the opcode to get all opcodes collected for
-            min_ci (int, optional): minimum call index of opcode. Defaults to 0.
-            min_depth (int, optional): minimum depth of opcode when used. Defaults to 0.
-
+            opcode (str): the opcode  name (in uppercase) to get the df of
+            **kwargs (dict[str, 2-tuple]): keyed arguments to control what
+            rows of the df to return
         Returns:
-            List[Op]: List of all opcodes matching the min_c and min_depth with the opcode name
-            matching the provided opcode
+            pd.DataFrame: the dataframe matching the properties specified by **kwargs,
+            or just a copy of the dataframe if no kwargs.
         """
+        if len(kwargs) == 0:
+            return self.ops[opcode].copy()
 
-        if min_ci == min_depth == 0:
-            return self.op_map[opcode.name]
+        return self.ops[opcode].query(
+            " and ".join(f"{k}{v[0]}{v[1]}" for k, v in kwargs.items()),
+            inplace=False,
+        )
 
-        ops = self.op_map[opcode.name]
-        res = []
+    def filter_ops(
+        self, ops: pd.DataFrame, copy=True, deep=False, **kwargs : Dict[str, tuple[str, str]]) -> pd.DataFrame | None:
+        """filter_ops filters a Dataframe of ops based on 2-tupled kwargs, 
+        returning either a view or copy **kwargs keys are columns of the 
+        opcode dataframe, as those listed in DF_COLS. The values should 
+        be 2-tuples of the comparator (<,>,==,!=,...) as a string and 
+        the discrete value to compare to. If copy is False, then 
+        modifications are made in place, and nothing is returned
 
-        for op in ops:
-            if op.call_index >= min_ci and op.depth >= min_depth:
-                res.append(op)
+        Examples::
 
-        return res
+            filter_ops(ops, copy=True, callindex=('<',2))
+
+        Args:
+            ops (pd.DataFrame): the Dataframe of opcodes to filter
+            copy (bool, optional): Whether to return a copy, or instead. Defaults to True.
+            deep (bool, optional): Whether to perform a deep copy or shallow. Defaults to False.
+            **kwargs (dict[str, 2-tuple]): keyed arguments to control what
+            rows of the df to return
+        Returns:
+            pd.DataFrame: the dataframe view or copy matching the pased filters
+        """  
+        if len(kwargs) == 0:
+            return ops if not copy else ops.copy(deep=deep)
+
+        return ops.query(
+            " and ".join(f"\`{k}\`{v[0]}{v[1]}" for k, v in kwargs.items()),
+            inplace=not copy
+        )
 
     def get_ops_by_ops(
-        self, opcode: opcodes.OpCode, ops: List[Op], props: set[str]
-    ) -> List[Op]:
-        """Gets all opcodes that share common attributes with a list of already-collected Op
-        variables.
+        self, opcode: str, ops: pd.DataFrame, **kwargs: Dict[str,bool]) -> pd.DataFrame:
+        """Gets all opcodes that share common attributes with a dataframe of
+        already-collected operators. Returns a dataframe consisting of all
+        operators with that have some matching value in a kwarg-defined column
+        with some op in ops. ONLY **kwargs that are defined as equal to True
+        will be used when filtering (i.e depth=True). Will always make a copy
+
+        Examples::
+
+            get_ops_by_ops("JUMPI", sload, callindex=True, depth=True)
 
         Args:
             opcode (opcodes.OpCode): the specific type of op to collect
-            ops (List[Op]): the list of Ops that the returned operators should share matching
+            ops (pd.DataFrame): the list of Ops that the returned operators should share matching
             properties with
-            props (set[str]): a set of strings that correspond to properties defined within
-            the Op variable. Example is {'call_index', 'depth'}
+            **kwargs (dict[str, bool]): keyed arguments to control what
+            rows of the df to return, in the format column=True/False
         Returns:
-            List[Op]: a list of opcodes that are the same opcode type as opcode and match the same
+            pd.DataFrame: a list of opcodes that are the same opcode type as opcode and match the same
             properties as defined in props with SOME op in ops.
         """
 
-        req_values = []
+        cols = [k for k, v in kwargs.items() if v]
 
-        for op in ops:
-            req_values.append(op.get_props(props))
-
-        req_values = [dict(p) for p in set(tuple(i.items()) for i in req_values)]
-        temp = self.op_map[opcode.name]
-
-        res = []
-        for op in temp:
-            if op in req_values:
-                res.append(op)
-
-        return res
-
-    def __create_potential_matches(
-        self, ops1: List[Op], ops2: List[Op], props: set[str]
-    ) -> Dict[Op, List[Op]]:
-        res = {}
-
-        if len(props) == 0:
-            return {op1: ops2 for op1 in ops1}
-
-        for op1 in ops1:
-            res[op1] = []
-            op1_props = op1.get_props(props)
-
-            for op2 in ops2:
-                if op2.get_props(props) == op1_props:
-                    res[op1].append(op2)
-
-        return res
-
-    def filter_props(self, ops : List[Op], props: Dict[str, int | str]) -> List[Op]:
-        """Filters a list of ops based on particular properties. props is a dict
-        between Op properties (call_index, depth, pc, etc.) and discrete values. 
-        For example: props={"call_index":2, "depth":3}
-
-        Args:
-            ops (List[Op]): List of ops to filter based on property values
-            props (Dict[str, int  |  str]): Dict of properties to filter by
-
-        Returns:
-            List[Op]: Filtered list of ops
-        """        
-        res = []
+        if len(cols) == 0:
+            return self.get_ops(opcode)
         
-        for op in ops:
-            if op == props:
-                res.append(op)
+        df = self.ops[opcode].merge(
+            ops, 
+            on=cols, 
+            how='inner',
+            suffixes=(None, "_y"))
 
-        return res
+        df = df.loc[:,~df.columns.str.endswith('_y')]
+        return df[~df.astype(str).duplicated()].copy()
 
 
-    def reduce_props(self, ops1: List[Op], ops2: List[Op], props: set[str]) -> List[Op]:
-        """Reduces the list ops1 by the list ops2 where properties of the Op variables in ops1 does not
-        match any of the Ops in ops2.
+    def reduce_props(self, ops1: pd.DataFrame, ops2: pd.DataFrame, copy : bool = True, **kwargs: Dict[str,bool]) -> pd.DataFrame:
+        """Reduces the Dataframe ops1 by ops2 where a value in a particular kwarg-denoted
+          column is the same. 
+
+          *If only reducing by one column, this will be slower than doing the manipulation
+          yourself. This is meant for multi-column reductions
+
+        Examples::
+
+            reduce_props(ops1, ops2, callindex=True, depth=True)
 
         Args:
-            ops1 (List[Op]): list of opcodes to check for properties, and then return
-            ops2 (List[Op]): list of opcodes to source property values from
-            props (set[str]): a set of strings that correspond to properties defined within
-            the Op variable. Example is {'call_index', 'depth'}
-
+            ops1 (pd.DataFrame): list of opcodes to check for properties, and then return
+            ops2 (pd.DataFrame): list of opcodes to source property values from
+            copy (bool) : whether to copy the returned dataframe or just return a view
+            **kwargs (dict[str, bool]): keyed arguments to control what
+            rows of the df to return, in the format column=True/False
         Returns:
-            List[Op]: A list of opcodes from ops1 that match similar properties
+            pd.DataFrame: A list of opcodes from ops1 that match similar properties
             to ops2
         """
-        for op in ops2:
-            req_values.append(op.get_props(props))
 
-        req_values = [dict(p) for p in set(tuple(i.items()) for i in req_values)]
+        cols = [k for k, v in kwargs.items() if v]
 
-        res = []
+        if len(cols) == 0:
+            return ops1  
+        
+        df = ops1.merge(
+            ops2, 
+            on=cols, 
+            how='inner',
+            suffixes=(None, "_y"))
+        df = df.loc[:,~df.columns.str.endswith('_y')]
+        df = df[~df.astype(str).duplicated()]
+        return df if not copy else df.copy
 
-        for op in ops1:
-            if op in req_values:
-                res.append(op)
-
-        return res
-
-    def reduce_value(self, ops: List[Op], value: int) -> List[Op]:
-        """Reduce a list of opcodes based on a discrete value, and
-        if the opcodes created a variable with that value
+    def reduce_value(self, ops: pd.DataFrame, value: int, var_index : int = None, copy : bool = True) -> pd.DataFrame:
+        """Reduces ops based on whether a used variable by an op is equal to the 
+        discrete value passed by value. If var_index is passed, only the n-th 
+        use-var is checked, rather than all of them. 
 
         Args:
-            ops (List[Op]): list of opcodes to iterate over
-            value (int): discrete value for op to define
+            ops (pd.DataFrame): the dataframe of opcodes to reduce
+            value (int): the discrete integer value a usevar should reference
+            var_index (int, optional): the indice of the used variable in the usevars column. Defaults to None.
+            copy (bool, optional): Whether to return a view or copy of the dataframe. Defaults to True.
 
         Returns:
-            List[Op]: list of opcodes that define a value matching
-            value
-        """
-        res = []
+            pd.DataFrame: a Dataframe of all ops where a use_var is equal to a discrete value
+        """         
 
-        for op in ops:
-            if op.def_var is not None:
-                for v in op.def_var.values:
-                    if v == value:
-                        res.append(op)
+        if var_index is None:
+            df = ops[[any(self.variables.get(var).value == value for var in usevars) for usevars in ops['usevars']]]
+            return df if not copy else df.copy()
 
-        return res
+        df = ops[[self.variables.get(usevars[var_index]).value == value for usevars in ops['usevars']]]
+        return df if not copy else df.copy()
+
 
     def reduce_values(
         self,
-        ops1: List[Op],
-        ops2: List[Op],
+        ops1: pd.DataFrame,
+        ops2: pd.DataFrame,
         ops1_def: bool = True,
         ops2_def: bool = True,
-        props : set[str] = {}
-    ) -> List[Op]:
-        """Reduces ops1 by the relation between values defined or used in ops1 and ops2.
+        ops1_use_vi: int = None,
+        ops2_use_vi: int = None,
+        copy: bool = True,
+        **kwargs: Dict[str,bool],
+    ) -> pd.DataFrame:
+        """Reduces the ops1 Dataframe by discrete values from the ops2 dataframe. 
 
-        If ops1_def is left True, then values will be collected from the defined variable for each op in
-        ops1. If this matches any value in ops2_vals, then add to the returned list. If ops1_def is instead
-        set to False, the value of used variables of ops1 are analyzed, instead of the value of the defined variables.
+        A copy is always made is ops1_def is False
 
-        If ops2_def is left True, the the defined variables from the list of ops2 will be used for analysis. These must then
-        match the defined / used variable values in ops1. If ops2_def is set False, then the used variabled will be analyzed
-        instead.
+        If ops1_def is left True, then values will be collected from the defined variable 
+        for each op in ops1. If ops1_def is instead set to False, the value of used variables 
+        of ops1 are analyzed, instead of the value of the defined variables.
+
+        If ops2_def is left True, the the defined variables from the dataframe of ops2 will be 
+        used for analysis. These must then match the defined / used variable values in ops1. 
+        If ops2_def is set False, then the used variabled will be analyzed instead.
+
+        **kwargs defines additional properties that must match when making the value linkage,
+        as boolean values.
+
+        For example, kwargs can be :obj:`callindex=True, depth=True`
 
         Args:
-            ops1 (List[Op]): list of first set of opcodes to check values for. This is the set of opcdoes that the return
-            value modifies
-            ops2 (List[Op]): list of second set of opcodes to compare values to
+            ops1 (pd.DataFrame): Dataframe of ops to modify
+            ops2 (pd.DataFrame): Dataframe of ops to compare to
             ops1_def (bool, optional): Whether to use the defined variables of ops1, or the used variables.
                 Defaults to True (def vars).
             ops2_def (bool, optional): Whether to use the defined variables of ops1, or the used variables.
                 Defaults to True (def vars).
-
+            ops1_use_vi (int, optional): The indice of the use var to analyze if ops1_def is False
+            ops2_use_vi (int, optional): The indice of the use var to analyze if ops2_def is False
+            **kwargs (dict[str, bool]): keyed arguments to control additional matching properties
+            required for linkage, such as having the same call index
         Returns:
-            List[Op]: a list of Op instances from ops1 that have a def/use var with the same value as a
+            pd.DataFrame: a list of Op instances from ops1 that have a def/use var with the same value as a
             def/use var from ops2
         """
-        # if ops2_def:
-        #     op2_vals = [op.def_var.value() for op in ops2]
-        # else:
-        #     op2_vals = [var.value() for op in ops2 for var in op.used_vars]
 
-        possible_links = self.__create_potential_matches(ops1, ops2, props)
+        cols = [k for k, v in kwargs.items() if v]
 
-        res = []
+        if ops2_def and len(cols) > 0:
+            req_val_tuples = list(zip(*(
+                ops2[col] for col in cols), 
+                tuple(self.variables.get(defvar).value for defvar in ops2['defvar'])
+            ))
+        elif ops2_def and len(cols) == 0:
+            req_val_tuples = tuple(self.variables.get(defvar).value for defvar in ops2['defvar'])
+        elif ops2_use_vi is not None:
+            if len(cols) > 0:
+                req_val_tuples = list(zip(*(
+                    ops2[col] for col in cols), 
+                    set(self.variables.get(usevars[ops2_use_vi]).value for usevars in ops2['usevars'])
+                ))
+            else:
+                req_val_tuples = tuple(self.variables.get(usevars[ops2_use_vi]).value for usevars in ops2['usevars'])
+        else:
+            if len(cols) > 0:
+                req_cols = (ops2[col] for col in cols)
+                req_val_tuples = list(zip(*req_cols, 
+                    set(self.variables.get(var).value for usevars in ops2['usevars'] for var in usevars)
+                ))
+            else:
+                req_val_tuples = [self.variables.get(var).value for usevars in ops2['usevars'] for var in usevars]
 
-        for op, linked_ops in possible_links.items():
-            vals = [op.def_var.value()] if ops1_def else op.used_vars
+        if ops1_def:
+            cols.append('defvar')
+            df = ops1[(ops1[cols].values[:,None] == req_val_tuples).all(len(cols)).any(1)]
+            return df if not copy else df.copy()
+        elif ops1_use_vi is not None:
+            cols.append('usevar')
+            ops1 = ops1.copy()
+            ops1['usevar'] = [self.variables[var[ops1_use_vi]].value for var in ops1['usevars']]            
+            df = ops1[(ops1[cols].values[:,None] == req_val_tuples).all(len(cols)).any(1)]
 
-            found = False
-            for linked_op in linked_ops:
-                if found: break
+            return df.drop('usevar', axis=1)
+        pass
 
-                if ops2_def is True and linked_op.def_var.value() in vals:
-                    res.append(op)
-                    found = True
-                elif ops2_def is False:
-                    for use_var in op.used_vars:
-                       if use_var.value() in vals:
-                            res.append(op)
-                            found = True
-
-        return res
-
-    def reduce_use(
+    def reduce_parent(
         self,
-        ops1: List[Op],
-        ops2: List[Op],
-        op2_vi: int = None,
-        reverse: bool = False,
-        props: set[str] = {},
-    ) -> List[Op]:
-        """Reduces ops1 by removing any Op variable that is not linked to any Op variable
-        used in ops2. Relation between Ops is a DAG, so ops2 should use the value
-        defined by op1.
+        ops1: pd.DataFrame,
+        ops2: pd.DataFrame,
+        ops1_vi: pd.DataFrame,
+        copy : bool = True,
+        **kwargs : dict[str, bool]
+    ) -> pd.DataFrame:
+        """Reduces ops1 by removing all ops that do not use a variable that is connected
+        to a variable defined by ops2. Uses BFS to determine linkages between variables
+
+        For example, if ops2 has a Op that defines V3, which is then used as an argument
+        to the definition of V4, and then V4 is used as the argument to V5, then if ops1
+        has a Op that defines v5, it will be included in the returned dataframe
+
+        Examples::
+
+            reduce_parent(ops1, ops2, 1, callindex=True, depth=True)
 
         Args:
-            ops1 (List[Op]): the list of Ops that should define a variable, which
-            ops2 (List[Op]): the list of Ops that should use a variable defined by ops1
-            op2_vi (int, optional): a specific variable index for ops2, if the index of the
+            ops1 (pd.DataFrame): the Dataframe of Ops that should use a variable, and is being
+            modified. ops1 should use a variable.
+            ops2 (pd.DataFrame): the Dataframe of Ops that should define a variable linked
+            to an op in ops2.
+            op1_vi (int, optional): a specific variable index for ops1, if the index of the
             used variable to be analyzed is specifically known. Reduces search time and also
             potential of false positives
-            reverse (bool, optional): flips ops1 and ops2, such that ops2 is the list that
-            return values are calculated from (thus returning Ops that use defined vars from ops1)
-
+            copy (bool, optional): whether to copy or return the same dataframe. Defaults to true.
+            **kwargs (dict[str, bool]): keyed arguments to control additional matching properties
+            required for linkage, such as having the same call index
         Returns:
-            List[Op]: a list of ops from ops1 that define a variable used by ops2
+            pd.DataFrame: a list of ops from ops1 that define a variable used by ops2
         """
-        res = []
+        
+        cols = [k for k, v in kwargs.items() if v]
+        req_cols = [ops2[col] for col in cols]
+        req_vars = set(self.variables.get(defvar) for defvar in ops2['defvar'])
+        
+        if len(req_cols) > 0:
+            ops1 = ops1[(ops1[cols].values[:,None] == req_cols).all(len(cols)).any(1)]
 
-        possible_uses = self.__create_potential_matches(ops1, ops2, props)
+        if ops1_vi:
+            ops1_vars = set(usevars[ops1_vi] for usevars in ops1['usevars'])
 
-        for op, links in possible_uses.items():
-            if len(res) == len(ops1):
-                break  # early return if all results true
+        child_vars = set(i.symbol for var in req_vars for i in var.get_descendants())
+        matched_vars = ops1_vars.intersection(child_vars)
 
-            if op.def_var is None:
-                continue
+        mask = ops1['usevars'].apply(lambda usevars: any(var for var in matched_vars if var in usevars))
+        
+        if copy:
+            new_df = ops1.copy(deep=True)
+            return new_df[mask]
 
-            for op2 in links:
-                if op2_vi == None:
-                    for var in op2.used_vars:
-                        if (
-                            self.graphs[op.call_index].has_node(var)
-                            and nx.has_path(
-                                self.graphs[op.call_index], op.def_var, var
-                            )
-                        ):
-                            res.append(op) if not reverse else res.append(var)
-                else:
-                    if (
-                        self.graphs[op.call_index].has_node(op2.used_vars[op2_vi])
-                        and nx.node_connectivity(
-                            self.graphs[op.call_index],
-                            s=op.def_var,
-                            t=op2.used_vars[op2_vi],
-                        )
-                        > 0
-                    ):
-                        res.append(op) if not reverse else res.append(
-                            op2.used_vars[op2_vi]
-                        )
+        return ops1[mask]
 
-        return res
 
-    def reduce_origin(self, ops: List[Op], addr: str | int) -> List[Op]:
-        """Reduces a list of opcodes based on the address that executed the opcode.
+    def reduce_origin(self, ops: pd.DataFrame, addr: str | List[str], copy = True) -> pd.DataFrame:
+        """Reduces a Dataframe of opcodes based on the address that executed the opcode.
 
         Args:
-            ops (List[Op]): the list of ops to iterate over
-            addr (str | int): a string or integer representation of the address that
-            executed the specific opcode
-
+            ops (pd.DataFrame): the list of ops to iterate over
+            addr (str | List[str]): a string or  list of strings that are the addresses 
+            that should have executed the opcode
+            copy (bool, Optional): whether to copy or modify in-place the result dataframe.
+            Defaults to True.
         Returns:
-            List[Op]: all opcodes that were executed under the defined address
+            pd.DataFrame: all opcodes that were executed under the defined address
         """
-        res = []
+        
+        res = ops[[self.addresses[ci] in addr for ci in ops['callindex']]]
+        return res.copy() if copy else res
 
-        addr = hex(addr) if isinstance(addr, int) else addr
+    def reduce_origins(self, ops1: pd.DataFrame, ops2 : pd.DataFrame, copy : bool = True, **kwargs : dict[str,bool]) -> pd.DataFrame:
+        """Reduces the first dataframe ops1 by the second dataframe ops2 based on the address
+        used to execute the opcodes in ops2.
 
-        for op in ops:
-            if self.addresses[op.call_index].lower() == addr.lower():
-                res.append(op)
+        Args:
+            ops1 (pd.DataFrame): the Dataframe of opcodes to reduce
+            ops2 (pd.DataFrame): the Dataframe of opcodes to reduce by
+            copy (bool, Optional): whether to copy or modify the dataframe in-place. Defaults
+            to True
+            **kwargs (dict[str, bool]): keyed arguments to control additional matching properties
+            required for linkage, such as having the same call index
+        Returns:
+            pd.DataFrame: The ops1 dataframe reduced by the originating opcode of the dataframe
+        """ 
 
-        return res
+        cols = [k for k, v in kwargs.items() if v]
 
-    def reduce_origins(self, ops1: List[Op], ops2 : List[Op]) -> List[Op]:
-        res = []
+        if len(cols) == 0:
+            req_val_tuples = tuple(self.addresses[ci] for ci in ops2['callindex'])
+        else:
+            req_val_tuples = list(zip(*(
+                ops2[col] for col in cols), 
+                tuple(self.addresses[ci] for ci in ops2['callindex'])
+            ))       
 
-        addrs = {self.addresses[op.call_index] for op in ops2}
+         
 
-        for op in ops1:
-            if self.addresses[op.call_index] in addrs:
-                res.append(op)
+    # def reduce_dominators(self, ops1: pd.DataFrame, ops2: pd.DataFrame, props : set[str] = {}) -> pd.DataFrame:
+    #     pass
 
-        return res
-
-    def reduce_dominators(self, ops1: List[Op], ops2: List[Op], props : set[str] = {}) -> List[Op]:
-        def is_total_dominator(opList, matchOp, callIndex):
-            if len(opList) == 0:
-                return False
-            elif len(opList) == 1 & opList == matchOp:
-                return True
-
-            for child in opList:
-                return True & is_total_dominator(
-                    self.graphs[callIndex].successors(child), matchOp, callIndex
-                )
-
-        res = []
-
-        possible_links = self.__create_potential_matches(ops1, ops2, props)
-
-        for op, links in possible_links.keys():
-            if op.def_var is None:
-                continue
-
-            # get all predecessors
-            for otherOp in links:
-                if is_total_dominator([otherOp], op, op.call_index):
-                    res.append(op)
-                    break
-
-        return res
-
-    def reduce_reaches(self, ops1 : List[Op], ops2 : List[Op], props : set[str] = {}) -> List[Op]:
-        possible_links = self.__create_potential_matches(ops1, ops2, props)
-
-        res = []
-
-        for op, links in possible_links.items():
-            if op.def_var is None:
-                continue
-
-            isFound = False
-            for link in links:
-                if isFound: break
-
-                for use_var in link.used_vars:
-                    if nx.has_path(self.graphs[op.call_index], op.def_var, use_var):
-                        res.append(op)
-                        isFound = True
-
-
+    # def reduce_reaches(self, ops1 : pd.DataFrame, ops2 : pd.DataFrame, props : set[str] = {}) -> pd.DataFrame:
+    #     pass

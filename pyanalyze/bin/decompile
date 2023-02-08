@@ -196,9 +196,21 @@ if args.config is not None:
 
 api = api.API(cfg)
 
-# get all sload, jumpi where JUMPI after sload
 
-sload = api.get_ops(opcodes.SLOAD, min_ci=2)
-jumpi = api.get_ops_by_ops(opcodes.JUMPI, sload, {"call_index", "depth"})
+# first step - get SLOAD
+sload = api.get_ops('SLOAD', callindex=('>', 2))
+jumpi = api.get_ops_by_ops('JUMPI', sload, callindex=True, depth=True)
+jumpi = api.reduce_parent(jumpi, sload, ops1_vi=1)
 
-api.reduce_use(sload, jumpi, op2_vi=1)
+# second step - get sstore and reduce where sstore_addr_var == sload_addr_var
+min_sload_depth = sload['depth'].min()
+sstore = api.get_ops('SSTORE', depth=('<', min_sload_depth))
+print(sstore)
+sstore = api.reduce_values(sstore, jumpi, ops1_use_vi=0, ops2_use_vi=0, ops1_def=False, ops2_def=False)
+
+print(sstore)
+
+# third step - get sload and sstore from same contract
+sstore = api.reduce_origins(sstore, sload)
+
+print(sstore)

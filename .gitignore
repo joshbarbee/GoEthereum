@@ -4,6 +4,5 @@ jwt.*
 /data
 consensus/dist/**
 __pycache__
-
 *.vs
 .vscode

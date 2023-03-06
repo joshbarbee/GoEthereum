@@ -127,19 +127,18 @@ class TACGraph(cfg.ControlFlowGraph):
             sys.exit(1)
 
         optrace = trace["optrace"].split("\n")
-
-        call_index = 0
-
+        
         to = trace["to"]
 
         for index, l in enumerate(optrace):
             if len(l.strip()) > 0:
                 args = l.strip().split(",")
                 pc = int(args[0])
-                opcode = opcodes.opcode_by_name(args[2])
-                depth = int(args[1])
+                call_index = int(args[1])
+                opcode = opcodes.opcode_by_name(args[3])
+                depth = int(args[2])
 
-                val_str = args[5]
+                val_str = args[6]
 
                 value = None  # parsing as hex string
                 extra = None
@@ -156,10 +155,6 @@ class TACGraph(cfg.ControlFlowGraph):
                 ops.append(
                     evm_cfg.EVMOp(pc, opcode, value, depth, call_index, index, extra)
                 )
-
-                # if there is a depth change, we had a call or something. Set the value of call to be the return value
-                if opcode.is_call():
-                    call_index += 1
 
         return cls(evm_cfg.blocks_from_ops(ops), to)
 
@@ -201,6 +196,13 @@ class TACGraph(cfg.ControlFlowGraph):
         for block in self.blocks:
             block.apply_operations(self.stack, self.memory, use_sets)
 
+    def resolve_addresses(self) -> None:
+        """
+        Resolves all addresses from the argument variable reference stored for
+        that address
+        """
+        for call_index in self.addresses:
+            self.addresses[call_index] = hex(next(iter(self.addresses[call_index].value.value))).lower()
 
 class TACBasicBlock(evm_cfg.EVMBasicBlock):
     """
@@ -683,6 +685,9 @@ class Destackifier:
         # the number of items pushed to the stack.
         # We increment it so that variable names will be globally unique.
         self.stack_vars = 0
+
+        # mapping of call indices to address of execution
+        self.addresss = {}
 
     def __fresh_init(self, evm_block: evm_cfg.EVMBasicBlock) -> None:
         """Reinitialise all structures in preparation for converting a block."""

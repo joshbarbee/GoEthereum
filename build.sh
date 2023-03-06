@@ -14,4 +14,4 @@
 sudo ./consensus/prysm.sh beacon-chain --execution-endpoint=/home/josh/Research/GoEthereum/data/geth.ipc --accept-terms-of-use --checkpoint-sync-url https://beaconstate.info --datadir data &
 
 # start rpc server with config
-sudo ./go-ethereum/build/bin/geth --syncmode full --datadir data --http --http.api eth,net,engine,admin 
+sudo ./go-ethereum/build/bin/geth --syncmode full --datadir data --http --http.api eth,net,engine,admin --mongo.database ethlogger2

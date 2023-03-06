@@ -103,7 +103,10 @@ type EVM struct {
 	// StateDB gives access to the underlying state
 	StateDB StateDB
 	// Depth is the current call stack
-	depth int
+	Depth int
+
+	// Call index in the current call stack
+	CallIndex uint64
 
 	// chainConfig contains information about the current chain
 	chainConfig *params.ChainConfig
@@ -171,7 +174,7 @@ func (evm *EVM) Interpreter() *EVMInterpreter {
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Fail if we're trying to execute above the call depth limit
-	if evm.depth > int(params.CallCreateDepth) {
+	if evm.Depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
 	// Fail if we're trying to transfer more than the available balance
@@ -188,7 +191,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.Sign() == 0 {
 			// Calling a non existing account, don't do anything, but ping the tracer
 			if evm.Config.Debug {
-				if evm.depth == 0 {
+				if evm.Depth == 0 {
 					evm.Config.Tracer.CaptureStart(evm, caller.Address(), addr, false, input, gas, value)
 					evm.Config.Tracer.CaptureEnd(ret, 0, 0, nil)
 				} else {
@@ -200,11 +203,11 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 		evm.StateDB.CreateAccount(addr)
 	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value, evm.Prefetch, evm.depth)
+	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value, evm.Prefetch, evm.Depth)
 
 	// Capture the tracer start/end events in debug mode
 	if evm.Config.Debug {
-		if evm.depth == 0 {
+		if evm.Depth == 0 {
 			evm.Config.Tracer.CaptureStart(evm, caller.Address(), addr, false, input, gas, value)
 			defer func(startGas uint64, startTime time.Time) { // Lazy evaluation of the parameters
 				evm.Config.Tracer.CaptureEnd(ret, startGas-gas, time.Since(startTime), err)
@@ -228,7 +231,8 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		traceIndexCopy := mgologger.TraceIndex
 		if !evm.Prefetch {
 			mgologger.TraceIndex++
-			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
+			mgologger.CallStack[evm.Depth] = uint(traceIndexCopy)
+			evm.CallIndex = uint64(traceIndexCopy)
 		}
 
 		if len(code) == 0 {
@@ -244,7 +248,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 
 		if !evm.Prefetch {
-			mgologger.AddFuncLog(traceIndexCopy, "CALL", evm.depth, caller.Address(), addr, valueCopy, gasCopy, input, ret)
+			mgologger.AddFuncLog(traceIndexCopy, "CALL", evm.Depth, caller.Address(), addr, valueCopy, gasCopy, input, ret)
 		}
 	}
 	// When an error was returned by the EVM or when setting the creation code
@@ -271,7 +275,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 // code with the caller as context.
 func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Fail if we're trying to execute above the call depth limit
-	if evm.depth > int(params.CallCreateDepth) {
+	if evm.Depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
 	// Fail if we're trying to transfer more than the available balance
@@ -300,7 +304,8 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		traceIndexCopy := mgologger.TraceIndex
 		if !evm.Prefetch {
 			mgologger.TraceIndex++
-			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
+			mgologger.CallStack[evm.Depth] = uint(traceIndexCopy)
+			evm.CallIndex = uint64(traceIndexCopy)
 		}
 
 		addrCopy := addr
@@ -312,7 +317,8 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 		gas = contract.Gas
 
 		if !evm.Prefetch {
-			mgologger.AddFuncLog(traceIndexCopy, "CALLCODE", evm.depth, caller.Address(), addr, valueCopy, gasCopy, input, ret)
+			mgologger.AddFuncLog(traceIndexCopy, "CALLCODE", evm.Depth, caller.Address(), addr, valueCopy, gasCopy, input, ret)
+			mgologger.TraceIndex--
 		}
 	}
 	if err != nil {
@@ -331,7 +337,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 // code with the caller as context and the caller is set to the caller of the caller.
 func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
 	// Fail if we're trying to execute above the call depth limit
-	if evm.depth > int(params.CallCreateDepth) {
+	if evm.Depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
 	var snapshot = evm.StateDB.Snapshot()
@@ -353,7 +359,8 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		traceIndexCopy := mgologger.TraceIndex
 		if !evm.Prefetch {
 			mgologger.TraceIndex++
-			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
+			mgologger.CallStack[evm.Depth] = uint(traceIndexCopy)
+			evm.CallIndex = uint64(traceIndexCopy)
 		}
 
 		addrCopy := addr
@@ -364,7 +371,8 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 		gas = contract.Gas
 
 		if !evm.Prefetch {
-			mgologger.AddFuncLog(traceIndexCopy, "DELEGATECALL", evm.depth, caller.Address(), addr, *valueCopy, gasCopy, input, ret)
+			mgologger.AddFuncLog(traceIndexCopy, "DELEGATECALL", evm.Depth, caller.Address(), addr, *valueCopy, gasCopy, input, ret)
+			mgologger.TraceIndex--
 		}
 	}
 	if err != nil {
@@ -382,7 +390,7 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 // instead of performing the modifications.
 func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte, gas uint64) (ret []byte, leftOverGas uint64, err error) {
 	// Fail if we're trying to execute above the call depth limit
-	if evm.depth > int(params.CallCreateDepth) {
+	if evm.Depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
 	// We take a snapshot here. This is a bit counter-intuitive, and could probably be skipped.
@@ -414,7 +422,8 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		traceIndexCopy := mgologger.TraceIndex
 		if !evm.Prefetch {
 			mgologger.TraceIndex++
-			mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
+			mgologger.CallStack[evm.Depth] = uint(traceIndexCopy)
+			evm.CallIndex = uint64(traceIndexCopy)
 		}
 
 		// At this point, we use a copy of address. If we don't, the go compiler will
@@ -432,7 +441,8 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 		gas = contract.Gas
 
 		if !evm.Prefetch {
-			mgologger.AddFuncLog(traceIndexCopy, "STATICCALL", evm.depth, caller.Address(), addr, valueCopy, gasCopy, input, ret)
+			mgologger.AddFuncLog(traceIndexCopy, "STATICCALL", evm.Depth, caller.Address(), addr, valueCopy, gasCopy, input, ret)
+			mgologger.TraceIndex--
 		}
 	}
 	if err != nil {
@@ -460,7 +470,7 @@ func (c *codeAndHash) Hash() common.Hash {
 func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64, value *big.Int, address common.Address, typ OpCode) ([]byte, common.Address, uint64, error) {
 	// Depth check execution. Fail if we're trying to execute above the
 	// limit.
-	if evm.depth > int(params.CallCreateDepth) {
+	if evm.Depth > int(params.CallCreateDepth) {
 		return nil, common.Address{}, gas, ErrDepth
 	}
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
@@ -491,7 +501,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	if evm.chainRules.IsEIP158 {
 		evm.StateDB.SetNonce(address, 1)
 	}
-	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value, evm.Prefetch, evm.depth)
+	evm.Context.Transfer(evm.StateDB, caller.Address(), address, value, evm.Prefetch, evm.Depth)
 
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
@@ -499,7 +509,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	contract.SetCodeOptionalHash(&address, codeAndHash)
 
 	if evm.Config.Debug {
-		if evm.depth == 0 {
+		if evm.Depth == 0 {
 			evm.Config.Tracer.CaptureStart(evm, caller.Address(), address, true, codeAndHash.code, gas, value)
 		} else {
 			evm.Config.Tracer.CaptureEnter(typ, caller.Address(), address, codeAndHash.code, gas, value)
@@ -508,8 +518,9 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 	traceIndexCopy := mgologger.TraceIndex
 	if !evm.Prefetch {
+		evm.CallIndex = uint64(traceIndexCopy)
 		mgologger.TraceIndex++
-		mgologger.CallStack[evm.depth] = uint(traceIndexCopy)
+		mgologger.CallStack[evm.Depth] = uint(traceIndexCopy)
 	}
 
 	start := time.Now()
@@ -550,7 +561,7 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	}
 
 	if evm.Config.Debug {
-		if evm.depth == 0 {
+		if evm.Depth == 0 {
 			evm.Config.Tracer.CaptureEnd(ret, gas-contract.Gas, time.Since(start), err)
 		} else {
 			evm.Config.Tracer.CaptureExit(ret, gas-contract.Gas, err)
@@ -558,7 +569,8 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 	}
 
 	if !evm.Prefetch {
-		mgologger.AddFuncLog(traceIndexCopy, "CREATE", evm.depth, caller.Address(), address, valueCopy, gasCopy, codeAndHash.code, ret)
+		mgologger.AddFuncLog(traceIndexCopy, "CREATE", evm.Depth, caller.Address(), address, valueCopy, gasCopy, codeAndHash.code, ret)
+		mgologger.TraceIndex--
 	}
 
 	return ret, address, contract.Gas, err

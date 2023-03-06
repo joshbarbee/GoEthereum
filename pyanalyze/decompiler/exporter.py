@@ -145,9 +145,9 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
             for var in block.entry_stack:
                 if not var.def_sites.is_const and var.def_sites.is_finite:
                     name = block.ident() + ":" + var.name
-                    for loc in var.def_sites:
+                    for op_index in var.def_sites:
                         define.append(
-                            (name, hex(loc.pc), op.op_index, op.depth, op.call_index)
+                            (name, hex(op_index.pc), op.op_index, op.depth, op.call_index)
                         )
 
                     if var.values.is_finite:

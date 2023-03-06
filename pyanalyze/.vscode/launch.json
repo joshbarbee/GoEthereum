@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Reentrancy",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/example_reentrancy.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Main",
             "type": "python",
             "request": "launch",

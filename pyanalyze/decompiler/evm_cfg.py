@@ -13,7 +13,7 @@ class EVMBasicBlock(cfg.BasicBlock):
     """
 
     def __init__(
-        self, entry: int = None, exit: int = None, evm_ops: t.List["EVMOp"] = None
+        self, entry: int = None, exit: int = None, evm_ops: t.List["EVMOp"] = None, address : str = None
     ):
         """
         Creates a new basic block containing operations between the
@@ -30,6 +30,8 @@ class EVMBasicBlock(cfg.BasicBlock):
         """List of EVMOps contained within this EVMBasicBlock"""
 
         self.fallthrough = None
+
+        self.address = address
         """
         The block that this one falls through to on the false branch
         of a JUMPI, if it exists. This should already appear in self.succs;
@@ -163,30 +165,45 @@ def blocks_from_ops(ops: t.Iterable[EVMOp]) -> t.Iterable[EVMBasicBlock]:
     Returns:
       List of BasicBlocks from the input ops, in arbitrary order.
     """
+
     blocks = []
 
     # details for block currently being processed
-    entry, exit = (0, len(ops) - 1) if len(ops) > 0 else (None, None)
+    entry, exit = (0, len(ops) - 1) if len(ops) > 0 \
+        else (None, None)
     current = EVMBasicBlock(entry, exit)
 
+    call_index = 0
+    for i, op in enumerate(ops):
+        if op.pc == 0 and i != 0:
+            call_index += 1
+        op.call_index = call_index
+
     # Linear scan of all EVMOps to create initial EVMBasicBlocks
+    depth = 0
     for i, op in enumerate(ops):
         op.block = current
         current.evm_ops.append(op)
 
-        if op.pc == 0 and i != 0:
+        # Remove all the intra blocks and only focus on the inter edges
+        # add a condition to create a new block when encountering the new contract 0;
+        if op.pc == 0 and i == 0:
+            depth = 1
+        elif op.pc == 0 and i != 0:
+            depth += 1
             new = current.split(i)
             blocks.append(current)
             current = new
 
+        # Add CREATE and CREATE2
         elif op.opcode.is_kind_four() or op.opcode.is_kind_five():
-            if (
-                ops[i - 1].call_index == op.call_index
-                and op.pc - ops[i - 1].pc == ops[i - 1].opcode.op_pc_gap()
-                and not ops[i - 1].opcode.possibly_halts()
-            ):
+            # Make sure conditions such as 238;ADD 239;CALL will not be split
+            if ops[i-1].call_index == op.call_index \
+                and op.pc - ops[i - 1].pc == ops[i - 1].opcode.op_pc_gap() \
+                and not ops[i-1].opcode.possibly_halts():
                 pass
             else:
+                depth -= 1
                 new = current.split(i)
                 blocks.append(current)
                 current = new
@@ -194,5 +211,8 @@ def blocks_from_ops(ops: t.Iterable[EVMOp]) -> t.Iterable[EVMBasicBlock]:
         # Always add last block if its last instruction does not alter flow
         elif i == len(ops) - 1:
             blocks.append(current)
+
+        op.op_index = i
+        op.depth = depth
 
     return blocks

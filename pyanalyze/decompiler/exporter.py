@@ -147,7 +147,13 @@ class CFGTsvExporter(Exporter, patterns.DynamicVisitor):
                     name = block.ident() + ":" + var.name
                     for op_index in var.def_sites:
                         define.append(
-                            (name, hex(op_index.pc), op.op_index, op.depth, op.call_index)
+                            (
+                                name,
+                                hex(op_index.pc),
+                                op.op_index,
+                                op.depth,
+                                op.call_index,
+                            )
                         )
 
                     if var.values.is_finite:

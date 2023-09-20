@@ -127,7 +127,7 @@ class TACGraph(cfg.ControlFlowGraph):
             sys.exit(1)
 
         optrace = trace["optrace"].split("\n")
-        
+
         to = trace["to"]
 
         for index, l in enumerate(optrace):
@@ -202,7 +202,10 @@ class TACGraph(cfg.ControlFlowGraph):
         that address
         """
         for call_index in self.addresses:
-            self.addresses[call_index] = hex(next(iter(self.addresses[call_index].value.value))).lower()
+            self.addresses[call_index] = hex(
+                next(iter(self.addresses[call_index].value.value))
+            ).lower()
+
 
 class TACBasicBlock(evm_cfg.EVMBasicBlock):
     """

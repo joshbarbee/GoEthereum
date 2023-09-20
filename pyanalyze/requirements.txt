@@ -10,10 +10,4 @@ sphinx_rtd_theme==1.1.1
 # Unit testing uses pytest
 pytest==7.2.0
 
-pandas
-
 pymongo
-
-numpy
-
-NetworkX

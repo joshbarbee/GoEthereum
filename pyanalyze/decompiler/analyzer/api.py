@@ -1,6 +1,5 @@
 import decompiler.opcodes as opcodes
 import decompiler.tac_cfg as tac_cfg
-import decompiler.opcodes as opcodes
 
 from typing import List, Dict, Callable
 
@@ -43,8 +42,10 @@ class OpAnalyzer:
                     used_vars = []
 
                 if op.opcode.is_call():
-                    addresses[op.depth + 1] = hex(next(iter(op.args[1].value.value))).lower()
-                    
+                    addresses[op.depth + 1] = hex(
+                        next(iter(op.args[1].value.value))
+                    ).lower()
+
                 # determine any newly defined variables from opcode
                 if isinstance(op, tac_cfg.TACAssignOp):
                     def_var = op.lhs.name
@@ -73,12 +74,13 @@ class OpAnalyzer:
                     used_vars = [self.variables.get(var) for var in used_vars]
                     new_op.use_vars = used_vars
 
-                self.ops[op.opcode.name].add_op(new_op)                
+                self.ops[op.opcode.name].add_op(new_op)
 
         for op in self.ops.values():
-            op.addresses = addresses  
+            op.addresses = addresses
+
     @classmethod
-    def load_from_dump(cls, tx: Dict[str, int | str | Dict]) -> "OpAnalyzer":
+    def load_from_mongo(cls, tx: Dict[str, int | str | Dict]) -> "OpAnalyzer":
         """Abstracts the process of CFG creation away from the user, so only a
         string dump of the transaction logs is needed
 
@@ -108,8 +110,52 @@ class OpAnalyzer:
         Returns:
             OpView: a copy of the OpView matching the filters placed by kwargs
         """
-        ops = self.ops[opcode].copy()
 
+        if opcode not in self.ops:
+            print(f"Retrieved OpView of zero ops: {opcode}")
+            return OpView()
+
+        ops = self.ops[opcode]
+
+        if len(kwargs.keys()) == 0: 
+            return ops
+        
         ops.filter(**kwargs)
 
         return ops
+
+    @staticmethod
+    def link_ops(orig : OpView, other : OpView, save_links: bool = False, **kwargs):
+        orig.link_ops(other, save_links, **kwargs)
+
+    @staticmethod
+    def filter(ops : OpView, **kwargs):
+        ops.filter(**kwargs)
+
+    @staticmethod
+    def reduce_links(ops : OpView, **kwargs):
+        ops.reduce_links(**kwargs)
+
+    @staticmethod
+    def filter_value(ops : OpView, value: int, oper: Callable, def_var: bool = True, use_vi: int = None):
+        ops.filter_value(value, oper, def_var=def_var, use_vi=use_vi)
+
+    @staticmethod
+    def reduce_value(ops : OpView, oper: Callable, self_def_var: bool = True, self_use_vi: int = None, link_def_var: bool = True, link_use_vi: int = None):
+        ops.reduce_value(oper, self_def_var=self_def_var, self_use_vi=self_use_vi, link_def_var=link_def_var, link_use_vi=link_use_vi)
+
+    @staticmethod
+    def reduce_descendant(ops : OpView, self_def_var: bool = True, self_use_vi: int = None, link_def_var: bool = True, link_use_vi: int = None):
+        ops.reduce_descendant(self_def_var=self_def_var, self_use_vi=self_use_vi, link_def_var=link_def_var, link_use_vi=link_use_vi)
+
+    @staticmethod
+    def reduce_ancestor(ops : OpView, self_def_var: bool = True, self_use_vi: int = None, link_def_var: bool = True, link_use_vi: int = None):
+        ops.reduce_ancestor(self_def_var=self_def_var, self_use_vi=self_use_vi, link_def_var=link_def_var, link_use_vi=link_use_vi)
+
+    @staticmethod
+    def filter_address(ops : OpView, address : str):
+        ops.filter_address(address)
+
+    @staticmethod
+    def reduce_address(ops : OpView, both : bool = False):
+        ops.reduce_address(both=both)

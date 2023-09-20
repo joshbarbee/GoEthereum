@@ -14,13 +14,7 @@ class MongoFetcher:
         self.collection = getattr(self.database, collection)
 
         self.block: int = 1
-
-    """
-        Gets all transactions in the mongodb at a certain index 
-        N is an optional argument that ifnot specified, we will read
-        in the next block 
-    """
-
+        
     def get_block(self, n: int = None) -> None:
         if n == None:
             n = self.block
@@ -35,3 +29,6 @@ class MongoFetcher:
         if tx == "":
             return list(self.collection.aggregate([{"$sample": {"size": 1}}]))[0]
         return self.collection.find_one({"tx": tx})
+    
+    def get_random_txs(self, n : int = 1):
+        return list(self.collection.aggregate([{"$sample": {"size": n}}]))

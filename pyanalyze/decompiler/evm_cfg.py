@@ -13,7 +13,11 @@ class EVMBasicBlock(cfg.BasicBlock):
     """
 
     def __init__(
-        self, entry: int = None, exit: int = None, evm_ops: t.List["EVMOp"] = None, address : str = None
+        self,
+        entry: int = None,
+        exit: int = None,
+        evm_ops: t.List["EVMOp"] = None,
+        address: str = None,
     ):
         """
         Creates a new basic block containing operations between the
@@ -169,8 +173,7 @@ def blocks_from_ops(ops: t.Iterable[EVMOp]) -> t.Iterable[EVMBasicBlock]:
     blocks = []
 
     # details for block currently being processed
-    entry, exit = (0, len(ops) - 1) if len(ops) > 0 \
-        else (None, None)
+    entry, exit = (0, len(ops) - 1) if len(ops) > 0 else (None, None)
     current = EVMBasicBlock(entry, exit)
 
     call_index = 0
@@ -198,9 +201,11 @@ def blocks_from_ops(ops: t.Iterable[EVMOp]) -> t.Iterable[EVMBasicBlock]:
         # Add CREATE and CREATE2
         elif op.opcode.is_kind_four() or op.opcode.is_kind_five():
             # Make sure conditions such as 238;ADD 239;CALL will not be split
-            if ops[i-1].call_index == op.call_index \
-                and op.pc - ops[i - 1].pc == ops[i - 1].opcode.op_pc_gap() \
-                and not ops[i-1].opcode.possibly_halts():
+            if (
+                ops[i - 1].call_index == op.call_index
+                and op.pc - ops[i - 1].pc == ops[i - 1].opcode.op_pc_gap()
+                and not ops[i - 1].opcode.possibly_halts()
+            ):
                 pass
             else:
                 depth -= 1

@@ -2,6 +2,9 @@ from typing import List
 
 
 class Variable:
+    """Representation of Metavariable. Maintains digraph data structure to compute
+    relationships between variables like def/use. 
+    """
     def __init__(self, symbol: str, value: int, preds: List["Variable"] = []) -> None:
         self.symbol = symbol
         self.value = value
@@ -10,13 +13,14 @@ class Variable:
 
     def __eq__(self, __o: object) -> bool:
         if isinstance(__o, Variable):
-            if self.symbol == __o.symbol: return True
+            if self.symbol == __o.symbol:
+                return True
             return False
         elif isinstance(__o, str):
             if self.symbol == __o:
                 return True
             return False
-        
+
         raise NotImplementedError()
 
     def is_parent(self, parent_vars: List["Variable"] | "Variable") -> bool:
